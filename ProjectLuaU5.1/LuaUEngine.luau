@@ -544,7 +544,6 @@ function Baseline.new(canvasGroup)
 	self.LastClickTime = 0
 	self.LastTypedChar = ""
 	self.LastTypedTick = 0
-	self.PasteGuardUntil = 0
 	self.History = {{text = "", cursor = 0, sel = 0}}
 	self.HistoryIdx = 1
 	self.SinkActionName = "BaselineSink_" .. HttpService:GenerateGUID(false)
@@ -765,9 +764,10 @@ function Baseline.new(canvasGroup)
 	table.insert(self.Connections, self.PasteBox:GetPropertyChangedSignal("Text"):Connect(function()
 		local text = self.PasteBox.Text
 		if text == "" then return end
-		self.PasteBox.Text = ""
+		task.defer(function()
+			if self.PasteBox and self.PasteBox.Text == text then self.PasteBox.Text = "" end
+		end)
 		if text == "\n" or text == "\r\n" or text == "\r" then return end
-		if tick() < self.PasteGuardUntil then return end
 		local isManualKeystroke = (#text == 1) and (text == self.LastTypedChar) and ((tick() - self.LastTypedTick) < 0.25)
 		if not isManualKeystroke then
 			self:PasteChunked(text)
@@ -900,7 +900,6 @@ function Baseline.new(canvasGroup)
 				self:Cut()
 				return
 			elseif isCtrlDown and input.KeyCode == Enum.KeyCode.V then
-				self.PasteGuardUntil = tick() + 0.3
 				self.LastTypedChar = ""
 				return
 			elseif isCtrlDown and input.KeyCode == Enum.KeyCode.F then
@@ -1096,7 +1095,7 @@ function Baseline:ApplyThemeRules(rules)
 		end
 	end
 	self.CachedText = nil
-	self:UpdateBlinker(true)
+	self:UpdateBlinker(false)
 end
 
 function Baseline:ApplyStrokeToLabel(guiElement)
@@ -2088,7 +2087,7 @@ function Baseline:Unfocus()
 	self.DraggingMinimap = false
 	self.SelectionStart = self.CursorIndex
 	self:HideAutocomplete()
-	self:UpdateBlinker(true)
+	self:UpdateBlinker(false)
 	ContextActionService:UnbindAction(self.SinkActionName)
 	self.PasteBox:ReleaseFocus()
 end
