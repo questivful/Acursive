@@ -40,7 +40,7 @@ local Palette = {
 
 Acursive.Themes = THEMES
 Acursive.Palette = Palette
-Acursive.Version = "1.6.0"
+Acursive.Version = "1.6.1"
 
 local Accent = THEMES.Orange.primary
 local AccentLight = THEMES.Orange.light
@@ -57,6 +57,11 @@ local trackedWindows = {}
 local screenGui
 local notifContainer
 local notifCounter = 0
+
+local function tostr(v)
+	if v == nil then return "" end
+	return tostring(v)
+end
 
 local FocusMode = {
 	Active = false,
@@ -350,16 +355,6 @@ function FocusMode:Disable()
 		end)
 	end
 
-	local particles = self.ParticleGui
-	if particles then
-		for _, p in ipairs(self.Particles) do
-			if p and p.Parent then
-				pcall(function()
-					TweenService:Create(p, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
-				end)
-			end
-		end
-	end
 	task.delay(0.32, function()
 		self:_DestroyParticles()
 	end)
@@ -480,8 +475,8 @@ end
 function Acursive:Notify(opts)
 	if type(opts) == "string" then opts = { Title = opts } end
 	opts = opts or {}
-	local title = opts.Title or "Notification"
-	local content = opts.Content or opts.Text or ""
+	local title = tostr(opts.Title or "Notification")
+	local content = tostr(opts.Content or opts.Text or "")
 	local duration = opts.Duration or 4
 	local accentColor = opts.Accent or Accent
 	local container = getNotifContainer()
@@ -709,7 +704,7 @@ function DockManager:dock(tab)
 	hTitle.Size = UDim2.new(1, -60, 1, 0)
 	hTitle.Position = UDim2.new(0, 12, 0, 0)
 	hTitle.BackgroundTransparency = 1
-	hTitle.Text = string.upper(tab.Name)
+	hTitle.Text = string.upper(tostr(tab.Name))
 	hTitle.TextColor3 = Palette.Text
 	hTitle.TextSize = 11
 	hTitle.Font = Enum.Font.GothamBold
@@ -1027,7 +1022,7 @@ local function buildProfilePage(page, window)
 		k.Size = UDim2.new(0, 120, 1, 0)
 		k.Position = UDim2.new(0, 10, 0, 0)
 		k.BackgroundTransparency = 1
-		k.Text = label
+		k.Text = tostr(label)
 		k.TextColor3 = Palette.Muted
 		k.TextSize = 11
 		k.Font = Enum.Font.Gotham
@@ -1038,7 +1033,7 @@ local function buildProfilePage(page, window)
 		v.Size = UDim2.new(1, -140, 1, 0)
 		v.Position = UDim2.new(0, 130, 0, 0)
 		v.BackgroundTransparency = 1
-		v.Text = tostring(value)
+		v.Text = tostr(value)
 		v.TextColor3 = accent and Accent or Palette.Text
 		v.TextSize = 11
 		v.Font = Enum.Font.GothamMedium
@@ -1050,9 +1045,9 @@ local function buildProfilePage(page, window)
 	end
 
 	makeRow(1, "Display Name", LocalPlayer.DisplayName or LocalPlayer.Name, true)
-	makeRow(2, "Username", "@" .. LocalPlayer.Name)
-	makeRow(3, "User ID", tostring(LocalPlayer.UserId))
-	makeRow(4, "Account Age", tostring(LocalPlayer.AccountAge) .. " days")
+	makeRow(2, "Username", "@" .. tostr(LocalPlayer.Name))
+	makeRow(3, "User ID", tostr(LocalPlayer.UserId))
+	makeRow(4, "Account Age", tostr(LocalPlayer.AccountAge) .. " days")
 
 	local createdVal = "—"
 	pcall(function()
@@ -1086,8 +1081,8 @@ local function buildProfilePage(page, window)
 
 	local function updateClothing()
 		local s, p = refreshClothing()
-		if s then shirtRow.Text = s end
-		if p then pantsRow.Text = p end
+		if s then shirtRow.Text = tostr(s) end
+		if p then pantsRow.Text = tostr(p) end
 	end
 	updateClothing()
 	track(LocalPlayer.CharacterAdded:Connect(function()
@@ -1120,8 +1115,8 @@ function Acursive:CreateWindow(opts)
 	opts = opts or {}
 	local self_ = setmetatable({}, WindowClass)
 
-	self_.Title = opts.Title or "Acursive"
-	self_.Subtitle = opts.Subtitle or ""
+	self_.Title = tostr(opts.Title or "Acursive")
+	self_.Subtitle = tostr(opts.Subtitle or "")
 	self_.Size = opts.Size or UDim2.new(0, 640, 0, 400)
 	self_.Position = opts.Position or UDim2.new(0.5, 0, 0, 60)
 	self_.ToggleKey = opts.ToggleKey or Enum.KeyCode.RightShift
@@ -1419,8 +1414,8 @@ function Acursive:CreateWindow(opts)
 	end
 
 	function self_:SetToggleKey(key) self_.ToggleKey = key end
-	function self_:SetTitle(title) self_.Title = title end
-	function self_:SetSubtitle(subtitle) self_.Subtitle = subtitle end
+	function self_:SetTitle(title) self_.Title = tostr(title) end
+	function self_:SetSubtitle(subtitle) self_.Subtitle = tostr(subtitle) end
 	function self_:SetPosition(pos) Main.Position = pos end
 	function self_:SetSize(size) self_.Size = size self_:Resize(true) end
 	function self_:IsVisible() return self_.Visible end
@@ -1476,6 +1471,7 @@ function Acursive:CreateWindow(opts)
 
 	function self_:CreateTab(name, order)
 		if self_.Destroyed then return nil end
+		name = tostr(name)
 		self_.TabOrder = self_.TabOrder + 1
 		local orderNum = order or self_.TabOrder
 
@@ -1723,7 +1719,7 @@ function TabClass:CreateSection(title, order)
 	local header = Instance.new("TextLabel")
 	header.Size = UDim2.new(1, -24, 0, 22)
 	header.BackgroundTransparency = 1
-	header.Text = title
+	header.Text = tostr(title)
 	header.TextColor3 = Palette.Muted
 	header.TextSize = 11
 	header.Font = Enum.Font.GothamMedium
@@ -1763,11 +1759,11 @@ function TabClass:CreateSection(title, order)
 	sec.Frame = section
 	sec.Body = body
 	sec.Header = header
-	sec.Title = title
+	sec.Title = tostr(title)
 	sec.Collapsed = false
 	sec.Items = {}
 
-	function sec:SetTitle(t) header.Text = t sec.Title = t end
+	function sec:SetTitle(t) header.Text = tostr(t) sec.Title = tostr(t) end
 	function sec:SetVisible(v) section.Visible = v end
 	function sec:SetCollapsed(v)
 		sec.Collapsed = v
@@ -1780,7 +1776,7 @@ function TabClass:CreateSection(title, order)
 		opts = opts or {}
 		sec._order = sec._order + 1
 		local order = opts.Order or sec._order
-		local label = opts.Name or opts.Label or "Toggle"
+		local label = tostr(opts.Name or opts.Label or "Toggle")
 		local state = opts.Default or false
 		local callback = opts.Callback
 		local defaultKey = opts.Keybind or opts.DefaultKey
@@ -1903,7 +1899,7 @@ function TabClass:CreateSection(title, order)
 				setState(not state, true)
 				sec.Window:SaveConfig()
 			end
-			keyBtn.Text = tostring(defaultKey):gsub("Enum.KeyCode.", "")
+			keyBtn.Text = tostr(defaultKey):gsub("Enum.KeyCode.", "")
 		end
 
 		if not transparent then
@@ -1956,7 +1952,7 @@ function TabClass:CreateSection(title, order)
 					setState(not state, true)
 					sec.Window:SaveConfig()
 				end
-				keyBtn.Text = tostring(keyCode):gsub("Enum.KeyCode.", "")
+				keyBtn.Text = tostr(keyCode):gsub("Enum.KeyCode.", "")
 			end
 		end))
 
@@ -1969,9 +1965,9 @@ function TabClass:CreateSection(title, order)
 		return {
 			Set = function(v) setState(v, true) end,
 			Get = function() return state end,
-			SetKeybind = function(key) keyEntry.key = key keyEntry.callback = function() setState(not state, true) sec.Window:SaveConfig() end keyBtn.Text = tostring(key):gsub("Enum.KeyCode.", "") end,
+			SetKeybind = function(key) keyEntry.key = key keyEntry.callback = function() setState(not state, true) sec.Window:SaveConfig() end keyBtn.Text = tostr(key):gsub("Enum.KeyCode.", "") end,
 			SetVisible = function(v) row.Visible = v end,
-			SetName = function(t) lbl.Text = t end,
+			SetName = function(t) lbl.Text = tostr(t) end,
 			Row = row,
 		}
 	end
@@ -1980,13 +1976,13 @@ function TabClass:CreateSection(title, order)
 		opts = opts or {}
 		sec._order = sec._order + 1
 		local order = opts.Order or sec._order
-		local label = opts.Name or opts.Label or "Slider"
+		local label = tostr(opts.Name or opts.Label or "Slider")
 		local min = opts.Min or 0
 		local max = opts.Max or 100
 		local value = opts.Default or min
 		local callback = opts.Callback
 		local decimals = opts.Decimals or 2
-		local suffix = opts.Suffix or ""
+		local suffix = tostr(opts.Suffix or "")
 
 		local row = Instance.new("Frame")
 		row.Size = UDim2.new(1, 0, 0, 34)
@@ -2086,7 +2082,7 @@ function TabClass:CreateSection(title, order)
 			end,
 			Get = function() return value end,
 			SetVisible = function(v) row.Visible = v end,
-			SetName = function(t) lbl.Text = t end,
+			SetName = function(t) lbl.Text = tostr(t) end,
 		}
 	end
 
@@ -2094,7 +2090,7 @@ function TabClass:CreateSection(title, order)
 		opts = opts or {}
 		sec._order = sec._order + 1
 		local order = opts.Order or sec._order
-		local label = opts.Name or opts.Label or "Button"
+		local label = tostr(opts.Name or opts.Label or "Button")
 		local callback = opts.Callback
 
 		local btn = Instance.new("TextButton")
@@ -2132,7 +2128,7 @@ function TabClass:CreateSection(title, order)
 		end))
 
 		return {
-			SetName = function(t) btn.Text = t end,
+			SetName = function(t) btn.Text = tostr(t) end,
 			SetVisible = function(v) btn.Visible = v end,
 			Button = btn,
 		}
@@ -2142,7 +2138,7 @@ function TabClass:CreateSection(title, order)
 		opts = opts or {}
 		sec._order = sec._order + 1
 		local order = opts.Order or sec._order
-		local label = opts.Name or opts.Label or "Dropdown"
+		local label = tostr(opts.Name or opts.Label or "Dropdown")
 		local options = opts.Options or {}
 		local selected = opts.Default or options[1]
 		local callback = opts.Callback
@@ -2188,7 +2184,7 @@ function TabClass:CreateSection(title, order)
 		valLbl.Size = UDim2.new(0, 80, 1, 0)
 		valLbl.Position = UDim2.new(1, -90, 0, 0)
 		valLbl.BackgroundTransparency = 1
-		valLbl.Text = tostring(selected)
+		valLbl.Text = tostr(selected)
 		valLbl.TextColor3 = Accent
 		valLbl.TextSize = 11
 		valLbl.Font = Enum.Font.Gotham
@@ -2222,14 +2218,13 @@ function TabClass:CreateSection(title, order)
 			tween(wrap, 0.25, { Size = UDim2.new(1, 0, 0, 22) }, Enum.EasingStyle.Quart)
 		end
 
-		local makeOption
-		makeOption = function(opt, i)
+		local function makeOption(opt, i)
 			local o = Instance.new("TextButton")
 			o.Size = UDim2.new(1, 0, 0, 20)
 			o.BackgroundColor3 = Palette.Panel
 			o.BackgroundTransparency = 1
 			o.BorderSizePixel = 0
-			o.Text = "   " .. tostring(opt)
+			o.Text = "   " .. tostr(opt)
 			o.TextColor3 = Palette.Muted
 			o.TextSize = 11
 			o.Font = Enum.Font.Gotham
@@ -2246,7 +2241,7 @@ function TabClass:CreateSection(title, order)
 			end))
 			track(o.MouseButton1Click:Connect(function()
 				selected = opt
-				valLbl.Text = tostring(opt)
+				valLbl.Text = tostr(opt)
 				closeDropdown()
 				if callback then safeCall(callback, selected) end
 				sec.Window:SaveConfig()
@@ -2267,7 +2262,7 @@ function TabClass:CreateSection(title, order)
 				for _, o in ipairs(options) do
 					if o == v then
 						selected = v
-						valLbl.Text = tostring(v)
+						valLbl.Text = tostr(v)
 						if callback then safeCall(callback, selected) end
 						break
 					end
@@ -2278,7 +2273,7 @@ function TabClass:CreateSection(title, order)
 				for _, c in ipairs(bodyFrame:GetChildren()) do
 					if c:IsA("TextButton") then c:Destroy() end
 				end
-				options = newOpts
+				options = newOpts or {}
 				bodyFrame.Size = UDim2.new(1, 0, 0, #options * 20)
 				for i, opt in ipairs(options) do makeOption(opt, i) end
 				if expanded then
@@ -2299,7 +2294,7 @@ function TabClass:CreateSection(title, order)
 				end
 			end,
 			SetVisible = function(v) wrap.Visible = v end,
-			SetName = function(t) lbl.Text = t end,
+			SetName = function(t) lbl.Text = tostr(t) end,
 		}
 	end
 
@@ -2307,7 +2302,7 @@ function TabClass:CreateSection(title, order)
 		opts = opts or {}
 		sec._order = sec._order + 1
 		local order = opts.Order or sec._order
-		local label = opts.Name or opts.Label or "Multi"
+		local label = tostr(opts.Name or opts.Label or "Multi")
 		local options = opts.Options or {}
 		local callback = opts.Callback
 		local selected = {}
@@ -2385,7 +2380,7 @@ function TabClass:CreateSection(title, order)
 		local function updateText()
 			local n = 0
 			for _ in pairs(selected) do n = n + 1 end
-			valLbl.Text = n == 0 and "none" or n .. " selected"
+			valLbl.Text = n == 0 and "none" or (tostr(n) .. " selected")
 		end
 		updateText()
 
@@ -2401,7 +2396,7 @@ function TabClass:CreateSection(title, order)
 			o.BackgroundColor3 = Palette.Panel
 			o.BackgroundTransparency = 1
 			o.BorderSizePixel = 0
-			o.Text = "   " .. tostring(opt)
+			o.Text = "   " .. tostr(opt)
 			o.TextColor3 = selected[opt] and Accent or Palette.Muted
 			o.TextSize = 11
 			o.Font = Enum.Font.Gotham
@@ -2449,7 +2444,7 @@ function TabClass:CreateSection(title, order)
 				fire()
 			end,
 			SetVisible = function(v) wrap.Visible = v end,
-			SetName = function(t) lbl.Text = t end,
+			SetName = function(t) lbl.Text = tostr(t) end,
 		}
 	end
 
@@ -2457,7 +2452,7 @@ function TabClass:CreateSection(title, order)
 		opts = opts or {}
 		sec._order = sec._order + 1
 		local order = opts.Order or sec._order
-		local label = opts.Name or opts.Label or "Color"
+		local label = tostr(opts.Name or opts.Label or "Color")
 		local current = opts.Default or Accent
 		local callback = opts.Callback
 
@@ -2864,7 +2859,7 @@ function TabClass:CreateSection(title, order)
 				if callback then safeCall(callback, c) end
 			end,
 			SetVisible = function(vv) wrap.Visible = vv end,
-			SetName = function(t) lbl.Text = t end,
+			SetName = function(t) lbl.Text = tostr(t) end,
 			Expand = function() if not expanded then toggleExpand() end end,
 			Collapse = function() if expanded then toggleExpand() end end,
 		}
@@ -2874,7 +2869,7 @@ function TabClass:CreateSection(title, order)
 		opts = opts or {}
 		sec._order = sec._order + 1
 		local order = opts.Order or sec._order
-		local label = opts.Name or opts.Label or "Keybind"
+		local label = tostr(opts.Name or opts.Label or "Keybind")
 		local defaultKey = opts.Default or Enum.KeyCode.E
 		local callback = opts.Callback
 
@@ -2905,7 +2900,7 @@ function TabClass:CreateSection(title, order)
 		keyBtn.Position = UDim2.new(1, -65, 0.5, -7)
 		keyBtn.BackgroundColor3 = Palette.Input
 		keyBtn.BorderSizePixel = 0
-		keyBtn.Text = tostring(defaultKey):gsub("Enum.KeyCode.", "")
+		keyBtn.Text = tostr(defaultKey):gsub("Enum.KeyCode.", "")
 		keyBtn.TextColor3 = Accent
 		keyBtn.TextSize = 10
 		keyBtn.Font = Enum.Font.Gotham
@@ -2938,15 +2933,15 @@ function TabClass:CreateSection(title, order)
 			keyBtn.Text = "..."
 			keyCapture = function(keyCode)
 				keyEntry.key = keyCode
-				keyBtn.Text = tostring(keyCode):gsub("Enum.KeyCode.", "")
+				keyBtn.Text = tostr(keyCode):gsub("Enum.KeyCode.", "")
 			end
 		end))
 
 		return {
 			Get = function() return keyEntry.key end,
-			Set = function(k) keyEntry.key = k keyBtn.Text = tostring(k):gsub("Enum.KeyCode.", "") end,
+			Set = function(k) keyEntry.key = k keyBtn.Text = tostr(k):gsub("Enum.KeyCode.", "") end,
 			SetVisible = function(v) row.Visible = v end,
-			SetName = function(t) lbl.Text = t end,
+			SetName = function(t) lbl.Text = tostr(t) end,
 		}
 	end
 
@@ -2954,9 +2949,9 @@ function TabClass:CreateSection(title, order)
 		opts = opts or {}
 		sec._order = sec._order + 1
 		local order = opts.Order or sec._order
-		local label = opts.Name or opts.Label or "Input"
-		local default = opts.Default or ""
-		local placeholder = opts.Placeholder or ""
+		local label = tostr(opts.Name or opts.Label or "Input")
+		local default = tostr(opts.Default or "")
+		local placeholder = tostr(opts.Placeholder or "")
 		local callback = opts.Callback
 		local clearOnFocus = opts.ClearOnFocus ~= false
 
@@ -3021,9 +3016,9 @@ function TabClass:CreateSection(title, order)
 
 		return {
 			Get = function() return box.Text end,
-			Set = function(v) box.Text = v if callback then safeCall(callback, v) end end,
+			Set = function(v) box.Text = tostr(v) if callback then safeCall(callback, tostr(v)) end end,
 			SetVisible = function(v) row.Visible = v end,
-			SetName = function(t) lbl.Text = t end,
+			SetName = function(t) lbl.Text = tostr(t) end,
 		}
 	end
 
@@ -3031,7 +3026,7 @@ function TabClass:CreateSection(title, order)
 		opts = opts or {}
 		sec._order = sec._order + 1
 		local order = opts.Order or sec._order
-		local text = opts.Name or opts.Text or opts.Label or "Label"
+		local text = tostr(opts.Name or opts.Text or opts.Label or "Label")
 		local color = opts.Color or Palette.Text
 		local size = opts.Size or 11
 		local alignment = opts.Align or Enum.TextXAlignment.Left
@@ -3048,7 +3043,7 @@ function TabClass:CreateSection(title, order)
 		lbl.Parent = body
 
 		return {
-			Set = function(t) lbl.Text = t end,
+			Set = function(t) lbl.Text = tostr(t) end,
 			Get = function() return lbl.Text end,
 			SetVisible = function(v) lbl.Visible = v end,
 		}
@@ -3058,8 +3053,8 @@ function TabClass:CreateSection(title, order)
 		opts = opts or {}
 		sec._order = sec._order + 1
 		local order = opts.Order or sec._order
-		local title = opts.Title or "Info"
-		local content = opts.Content or opts.Text or ""
+		local title = tostr(opts.Title or "Info")
+		local content = tostr(opts.Content or opts.Text or "")
 
 		local wrap = Instance.new("Frame")
 		wrap.Size = UDim2.new(1, 0, 0, 0)
@@ -3079,7 +3074,7 @@ function TabClass:CreateSection(title, order)
 		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		stroke.Parent = wrap
 
-		local layout = Instance.new("UIListLayout")
+				local layout = Instance.new("UIListLayout")
 		layout.SortOrder = Enum.SortOrder.LayoutOrder
 		layout.Parent = wrap
 
@@ -3117,8 +3112,8 @@ function TabClass:CreateSection(title, order)
 		c.Parent = wrap
 
 		return {
-			SetTitle = function(v) t.Text = v end,
-			SetContent = function(v) c.Text = v end,
+			SetTitle = function(v) t.Text = tostr(v) end,
+			SetContent = function(v) c.Text = tostr(v) end,
 			SetVisible = function(v) wrap.Visible = v end,
 		}
 	end
@@ -3138,7 +3133,7 @@ function TabClass:CreateSection(title, order)
 		opts = opts or {}
 		sec._order = sec._order + 1
 		local order = opts.Order or sec._order
-		local image = opts.Image or ""
+		local image = tostr(opts.Image or "")
 		local height = opts.Height or 100
 
 		local img = Instance.new("ImageLabel")
@@ -3161,7 +3156,7 @@ function TabClass:CreateSection(title, order)
 		stroke.Parent = img
 
 		return {
-			SetImage = function(v) img.Image = v end,
+			SetImage = function(v) img.Image = tostr(v) end,
 			SetVisible = function(v) img.Visible = v end,
 		}
 	end
