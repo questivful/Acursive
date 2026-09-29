@@ -38,7 +38,7 @@ local Palette = {
 
 Acursive.Themes = THEMES
 Acursive.Palette = Palette
-Acursive.Version = "1.2.0"
+Acursive.Version = "1.3.0"
 
 local Accent = THEMES.Orange.primary
 local AccentLight = THEMES.Orange.light
@@ -49,12 +49,44 @@ local accentTargets = {}
 local accentGradients = {}
 local activeKeybinds = {}
 local keyCapture = nil
+local trackedConnections = {}
+local trackedThreads = {}
+local trackedWindows = {}
+
+local function track(conn)
+	if conn then table.insert(trackedConnections, conn) end
+	return conn
+end
+
+local function trackThread(t)
+	if t then table.insert(trackedThreads, t) end
+	return t
+end
+
+local function safeCall(fn, ...)
+	if type(fn) ~= "function" then return false end
+	local ok, err = pcall(fn, ...)
+	if not ok then
+		warn("[Acursive] callback error: " .. tostring(err))
+	end
+	return ok
+end
+
+local function safeExec(fn, ...)
+	local ok, res = pcall(fn, ...)
+	if not ok then
+		warn("[Acursive] exec error: " .. tostring(res))
+		return nil
+	end
+	return res
+end
 
 local function isTyping()
 	return UserInputService:GetFocusedTextBox() ~= nil
 end
 
 local function tween(inst, time, props, style, dir)
+	if not inst or not inst.Parent then return nil end
 	local t = TweenService:Create(inst, TweenInfo.new(time, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), props)
 	t:Play()
 	return t
@@ -91,13 +123,11 @@ local function applyAccent(color, light)
 	end
 end
 
-function Acursive:GetAccent()
-	return Accent
-end
-
-function Acursive:GetTheme()
-	return CurrentTheme
-end
+function Acursive:GetAccent() return Accent end
+function Acursive:GetTheme() return CurrentTheme end
+function Acursive:IsRGB() return RGBMode end
+function Acursive:GetRegistry() return activeKeybinds end
+function Acursive:GetVersion() return Acursive.Version end
 
 function Acursive:SetAccent(color, light)
 	RGBMode = false
@@ -114,36 +144,82 @@ function Acursive:SetTheme(name)
 end
 
 function Acursive:SetRGB(enabled)
-	RGBMode = enabled
+	RGBMode = enabled and true or false
 end
 
-function Acursive:IsRGB()
-	return RGBMode
+function Acursive:MemoryLeakCheck()
+	local stale = 0
+	for i = #trackedConnections, 1, -1 do
+		local c = trackedConnections[i]
+		if typeof(c) ~= "RBXScriptConnection" or not c.Connected then
+			table.remove(trackedConnections, i)
+			stale = stale + 1
+		end
+	end
+	local deadWindows = 0
+	for i = #trackedWindows, 1, -1 do
+		local w = trackedWindows[i]
+		if not w or not w.Main or not w.Main.Parent then
+			table.remove(trackedWindows, i)
+			deadWindows = deadWindows + 1
+		end
+	end
+	return {
+		LiveConnections = #trackedConnections,
+		StaleConnectionsRemoved = stale,
+		Threads = #trackedThreads,
+		AccentTargets = #accentTargets,
+		AccentGradients = #accentGradients,
+		Keybinds = #activeKeybinds,
+		Windows = #trackedWindows,
+		DeadWindowsRemoved = deadWindows,
+		ScreenGuiAlive = screenGui ~= nil and screenGui.Parent ~= nil,
+	}
 end
 
-function Acursive:GetRegistry()
-	return activeKeybinds
+function Acursive:Cleanup()
+	for _, c in ipairs(trackedConnections) do
+		pcall(function() if typeof(c) == "RBXScriptConnection" and c.Connected then c:Disconnect() end end)
+	end
+	table.clear(trackedConnections)
+	for _, t in ipairs(trackedThreads) do
+		pcall(function() task.cancel(t) end)
+	end
+	table.clear(trackedThreads)
+	table.clear(trackedWindows)
+	table.clear(accentTargets)
+	table.clear(accentGradients)
+	table.clear(activeKeybinds)
+	keyCapture = nil
+	if screenGui then pcall(function() screenGui:Destroy() end) end
+	screenGui = nil
+	notifContainer = nil
+	notifCounter = 0
 end
 
-UserInputService.InputBegan:Connect(function(input, processed)
+function Acursive:Destroy()
+	self:Cleanup()
+end
+
+track(UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 	if keyCapture then
 		local cb = keyCapture
 		keyCapture = nil
-		cb(input.KeyCode)
+		safeCall(cb, input.KeyCode)
 		return
 	end
 	if isTyping() then return end
 	for _, entry in ipairs(activeKeybinds) do
-		if entry.key == input.KeyCode then
-			entry.callback()
+		if entry.key == input.KeyCode and entry.callback then
+			safeCall(entry.callback)
 			break
 		end
 	end
-end)
+end))
 
-RunService.Heartbeat:Connect(function(dt)
+track(RunService.Heartbeat:Connect(function(dt)
 	local t = tick()
 	local offset = ((t * 0.35) % 2) - 1
 	for _, grad in ipairs(accentGradients) do
@@ -154,7 +230,7 @@ RunService.Heartbeat:Connect(function(dt)
 		local c = Color3.fromHSV(RGBHue, 0.85, 1)
 		applyAccent(c, c:Lerp(Color3.new(1, 1, 1), 0.7))
 	end
-end)
+end))
 
 local screenGui
 
@@ -223,7 +299,6 @@ function Acursive:Notify(opts)
 
 	local notif = Instance.new("Frame")
 	notif.Size = UDim2.new(1, 0, 1, 0)
-	notif.Position = UDim2.new(0, 0, 0, 0)
 	notif.BackgroundColor3 = Palette.Panel
 	notif.BorderSizePixel = 0
 	notif.Parent = wrapper
@@ -299,7 +374,7 @@ function Acursive:Notify(opts)
 	tween(progressFill, 0.3, { BackgroundTransparency = 0 })
 	tween(progressFill, duration, { Size = UDim2.new(0, 0, 1, 0) }, Enum.EasingStyle.Linear)
 
-	task.delay(duration, function()
+	trackThread(task.delay(duration, function()
 		tween(notif, 0.3, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 		tween(accentBar, 0.3, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 		tween(titleLbl, 0.3, { TextTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
@@ -309,19 +384,401 @@ function Acursive:Notify(opts)
 		task.wait(0.15)
 		tween(wrapper, 0.35, { Size = UDim2.new(1, 0, 0, 0) }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 		task.wait(0.4)
-		wrapper:Destroy()
-	end)
+		if wrapper and wrapper.Parent then wrapper:Destroy() end
+	end))
 	return notif
 end
 
 local WindowClass = {}
 WindowClass.__index = WindowClass
-
 local SectionClass = {}
 SectionClass.__index = SectionClass
-
 local TabClass = {}
 TabClass.__index = TabClass
+
+local function buildViewportCharacter(viewport)
+	for _, c in ipairs(viewport:GetChildren()) do c:Destroy() end
+	local cam = Instance.new("Camera")
+	cam.FieldOfView = 34
+	cam.Parent = viewport
+	viewport.CurrentCamera = cam
+
+	local cloneRef = { model = nil }
+
+	local function applyChar(char)
+		if not char or not char.Parent then return end
+		local clone = char:Clone()
+		for _, d in ipairs(clone:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.Anchored = true
+				d.CanCollide = false
+			elseif d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Sound") or d:IsA("ParticleEmitter") or d:IsA("Trail") then
+				d:Destroy()
+			end
+		end
+		local hum = clone:FindFirstChildOfClass("Humanoid")
+		if hum then hum.PlatformStand = true end
+		local hrp = clone:FindFirstChild("HumanoidRootPart")
+		if hrp then clone.PrimaryPart = hrp end
+		clone.Parent = viewport
+		pcall(function() clone:PivotTo(CFrame.new(0, 0, 0)) end)
+		if cloneRef.model and cloneRef.model.Parent then
+			pcall(function() cloneRef.model:Destroy() end)
+		end
+		cloneRef.model = clone
+	end
+
+	if LocalPlayer.Character then
+		applyChar(LocalPlayer.Character)
+	end
+	track(LocalPlayer.CharacterAdded:Connect(applyChar))
+
+	local radius = 5.6
+	local height = 1.6
+	local angle = 0
+	track(RunService.RenderStepped:Connect(function(dt)
+		if not cam.Parent then return end
+		angle = (angle + dt * 0.55) % (math.pi * 2)
+		local x = math.sin(angle) * radius
+		local z = math.cos(angle) * radius
+		cam.CFrame = CFrame.new(Vector3.new(x, height, z), Vector3.new(0, 0.9, 0))
+	end))
+
+	return cam, cloneRef
+end
+
+local function createProfilePanel(window)
+	local NavWrap = window.NavWrap
+	if not NavWrap or not NavWrap.Parent then return nil end
+
+	local panel = Instance.new("Frame")
+	panel.Name = "ProfilePanel"
+	panel.AnchorPoint = Vector2.new(0, 0)
+	panel.Position = UDim2.new(0, 4, 1, 6)
+	panel.Size = UDim2.new(0, 340, 0, 0)
+	panel.BackgroundColor3 = Palette.Panel
+	panel.BorderSizePixel = 0
+	panel.ClipsDescendants = true
+	panel.ZIndex = 20
+	panel.Visible = false
+	panel.Parent = NavWrap
+
+	local pCorner = Instance.new("UICorner")
+	pCorner.CornerRadius = UDim.new(0, 3)
+	pCorner.Parent = panel
+
+	local pStroke = Instance.new("UIStroke")
+	pStroke.Color = Palette.Outline
+	pStroke.Thickness = 1
+	pStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	pStroke.Parent = panel
+
+	local pShadow = Instance.new("UIStroke")
+	pShadow.Color = Palette.Shadow
+	pShadow.Thickness = 1
+	pShadow.Transparency = 0.25
+	pShadow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	pShadow.Parent = panel
+
+	local header = Instance.new("Frame")
+	header.Size = UDim2.new(1, 0, 0, 26)
+	header.BackgroundColor3 = Palette.Dark
+	header.BackgroundTransparency = 0.35
+	header.BorderSizePixel = 0
+	header.ZIndex = 21
+	header.Parent = panel
+
+	local hCorner = Instance.new("UICorner")
+	hCorner.CornerRadius = UDim.new(0, 3)
+	hCorner.Parent = header
+
+	local hTitle = Instance.new("TextLabel")
+	hTitle.Size = UDim2.new(1, -40, 1, 0)
+	hTitle.Position = UDim2.new(0, 12, 0, 0)
+	hTitle.BackgroundTransparency = 1
+	hTitle.Text = "PROFILE"
+	hTitle.TextColor3 = Palette.Text
+	hTitle.TextSize = 11
+	hTitle.Font = Enum.Font.GothamBold
+	hTitle.TextXAlignment = Enum.TextXAlignment.Left
+	hTitle.ZIndex = 22
+	hTitle.Parent = header
+
+	local dot = Instance.new("Frame")
+	dot.Size = UDim2.new(0, 5, 0, 5)
+	dot.Position = UDim2.new(0, 4, 0.5, -2.5)
+	dot.BackgroundColor3 = Accent
+	dot.BorderSizePixel = 0
+	dot.ZIndex = 22
+	dot.Parent = header
+	registerAccent(dot)
+	local dotCorner = Instance.new("UICorner")
+	dotCorner.CornerRadius = UDim.new(1, 0)
+	dotCorner.Parent = dot
+
+	local viewWrap = Instance.new("Frame")
+	viewWrap.Size = UDim2.new(0, 130, 0, 190)
+	viewWrap.Position = UDim2.new(0, 10, 0, 34)
+	viewWrap.BackgroundColor3 = Palette.Dark
+	viewWrap.BorderSizePixel = 0
+	viewWrap.ZIndex = 21
+	viewWrap.Parent = panel
+
+	local vwCorner = Instance.new("UICorner")
+	vwCorner.CornerRadius = UDim.new(0, 3)
+	vwCorner.Parent = viewWrap
+
+	local vwStroke = Instance.new("UIStroke")
+	vwStroke.Color = Palette.Outline
+	vwStroke.Thickness = 1
+	vwStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	vwStroke.Parent = viewWrap
+
+	local viewport = Instance.new("ViewportFrame")
+	viewport.Size = UDim2.new(1, 0, 1, 0)
+	viewport.BackgroundTransparency = 1
+	viewport.Ambient = Color3.fromRGB(160, 160, 160)
+	viewport.LightColor = Color3.fromRGB(255, 255, 255)
+	viewport.LightDirection = Vector3.new(-0.4, -1, -0.6)
+	viewport.ZIndex = 22
+	viewport.Parent = viewWrap
+
+	local bottomLabel = Instance.new("Frame")
+	bottomLabel.Size = UDim2.new(1, 0, 0, 24)
+	bottomLabel.Position = UDim2.new(0, 0, 1, -24)
+	bottomLabel.BackgroundColor3 = Palette.Dark
+	bottomLabel.BackgroundTransparency = 0.25
+	bottomLabel.BorderSizePixel = 0
+	bottomLabel.ZIndex = 23
+	bottomLabel.Parent = viewWrap
+
+	local blCorner = Instance.new("UICorner")
+	blCorner.CornerRadius = UDim.new(0, 3)
+	blCorner.Parent = bottomLabel
+
+	local blText = Instance.new("TextLabel")
+	blText.Size = UDim2.new(1, -12, 1, 0)
+	blText.Position = UDim2.new(0, 6, 0, 0)
+	blText.BackgroundTransparency = 1
+	blText.Text = "LIVE PREVIEW"
+	blText.TextColor3 = Accent
+	blText.TextSize = 9
+	blText.Font = Enum.Font.GothamBold
+	blText.TextXAlignment = Enum.TextXAlignment.Center
+	blText.ZIndex = 24
+	blText.Parent = bottomLabel
+	registerAccent(blText, "TextColor3")
+
+	local info = Instance.new("Frame")
+	info.Size = UDim2.new(1, -160, 1, -40)
+	info.Position = UDim2.new(0, 150, 0, 34)
+	info.BackgroundTransparency = 1
+	info.ZIndex = 21
+	info.Parent = panel
+
+	local iLayout = Instance.new("UIListLayout")
+	iLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	iLayout.Padding = UDim.new(0, 3)
+	iLayout.Parent = info
+
+	local function row(order, label, value, accent)
+		local r = Instance.new("Frame")
+		r.Size = UDim2.new(1, 0, 0, 20)
+		r.BackgroundTransparency = 1
+		r.LayoutOrder = order
+		r.ZIndex = 22
+		r.Parent = info
+
+		local k = Instance.new("TextLabel")
+		k.Size = UDim2.new(0, 76, 1, 0)
+		k.BackgroundTransparency = 1
+		k.Text = label
+		k.TextColor3 = Palette.Muted
+		k.TextSize = 10
+		k.Font = Enum.Font.Gotham
+		k.TextXAlignment = Enum.TextXAlignment.Left
+		k.ZIndex = 23
+		k.Parent = r
+
+		local v = Instance.new("TextLabel")
+		v.Size = UDim2.new(1, -80, 1, 0)
+		v.Position = UDim2.new(0, 80, 0, 0)
+		v.BackgroundTransparency = 1
+		v.Text = tostring(value)
+		v.TextColor3 = accent and Accent or Palette.Text
+		v.TextSize = 10
+		v.Font = Enum.Font.GothamMedium
+		v.TextXAlignment = Enum.TextXAlignment.Left
+		v.TextTruncate = Enum.TextTruncate.AtEnd
+		v.ZIndex = 23
+		v.Parent = r
+		if accent then registerAccent(v, "TextColor3") end
+		return v
+	end
+
+	local rDisplay = row(1, "Display", LocalPlayer.DisplayName or LocalPlayer.Name, true)
+	local rUser = row(2, "Username", "@" .. LocalPlayer.Name)
+	local rId = row(3, "User ID", tostring(LocalPlayer.UserId))
+	local rAge = row(4, "Account Age", tostring(LocalPlayer.AccountAge) .. " days")
+	local rCreated = row(5, "Created", "—")
+
+	pcall(function()
+		local created = DateTime.fromUnixTimestamp(os.time() - (LocalPlayer.AccountAge * 86400))
+		rCreated.Text = created:FormatLocalTime("YYYY-MM-DD", "en-us")
+	end)
+
+	local rShirt = row(6, "Shirt", "None")
+	local rPants = row(7, "Pants", "None")
+
+	local function refreshClothing()
+		local char = LocalPlayer.Character
+		if not char then return end
+		local s = char:FindFirstChildOfClass("Shirt")
+		local p = char:FindFirstChildOfClass("Pants")
+		rShirt.Text = s and "Equipped" or "None"
+		rPants.Text = p and "Equipped" or "None"
+		pcall(function()
+			local shirtT = s and s.ShirtTemplate or nil
+			if shirtT and #shirtT > 0 then rShirt.Text = "Loaded" end
+		end)
+	end
+	refreshClothing()
+	track(LocalPlayer.CharacterAdded:Connect(refreshClothing))
+
+	local divider = Instance.new("Frame")
+	divider.Size = UDim2.new(1, 0, 0, 1)
+	divider.BackgroundColor3 = Palette.Outline
+	divider.BorderSizePixel = 0
+	divider.LayoutOrder = 0
+	divider.ZIndex = 22
+	divider.Parent = info
+
+	local avatarBtn = Instance.new("TextButton")
+	avatarBtn.Size = UDim2.new(0, 22, 0, 22)
+	avatarBtn.Position = UDim2.new(0, 6, 0.5, -11)
+	avatarBtn.BackgroundColor3 = Palette.Dark
+	avatarBtn.BackgroundTransparency = 0.2
+	avatarBtn.BorderSizePixel = 0
+	avatarBtn.Text = ""
+	avatarBtn.AutoButtonColor = false
+	avatarBtn.ZIndex = 3
+	avatarBtn.Parent = NavWrap
+
+	local avCorner = Instance.new("UICorner")
+	avCorner.CornerRadius = UDim.new(1, 0)
+	avCorner.Parent = avatarBtn
+
+	local avStroke = Instance.new("UIStroke")
+	avStroke.Color = Palette.Outline
+	avStroke.Thickness = 1
+	avStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	avStroke.Parent = avatarBtn
+
+	local avImage = Instance.new("ImageLabel")
+	avImage.Size = UDim2.new(1, 0, 1, 0)
+	avImage.BackgroundTransparency = 1
+	avImage.Image = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(LocalPlayer.UserId) .. "&w=150&h=150"
+	avImage.ZIndex = 4
+	avImage.Parent = avatarBtn
+
+	local avImgCorner = Instance.new("UICorner")
+	avImgCorner.CornerRadius = UDim.new(1, 0)
+	avImgCorner.Parent = avImage
+
+	pcall(function()
+		local thumb, ok = Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+		if ok and thumb then avImage.Image = thumb end
+	end)
+
+	local circle = Instance.new("Frame")
+	circle.Size = UDim2.new(0, 6, 0, 6)
+	circle.Position = UDim2.new(1, -7, 1, -7)
+	circle.BackgroundColor3 = Color3.fromRGB(60, 200, 100)
+	circle.BorderSizePixel = 0
+	circle.ZIndex = 5
+	circle.Parent = avatarBtn
+
+	local cCorner = Instance.new("UICorner")
+	cCorner.CornerRadius = UDim.new(1, 0)
+	cCorner.Parent = circle
+
+	local cStroke = Instance.new("UIStroke")
+	cStroke.Color = Palette.Panel
+	cStroke.Thickness = 1
+	cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	cStroke.Parent = circle
+
+	local opened = false
+	local cam, charRef = nil, nil
+
+	local function open()
+		if opened then return end
+		opened = true
+		panel.Visible = true
+		if not cam then
+			cam, charRef = buildViewportCharacter(viewport)
+		end
+		tween(avStroke, 0.2, { Color = Accent })
+		tween(panel, 0.32, { Size = UDim2.new(0, 340, 0, 234) }, Enum.EasingStyle.Quart)
+	end
+
+	local function close()
+		if not opened then return end
+		opened = false
+		tween(avStroke, 0.2, { Color = Palette.Outline })
+		tween(panel, 0.26, { Size = UDim2.new(0, 340, 0, 0) }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+		trackThread(task.delay(0.3, function()
+			if not opened and panel and panel.Parent then panel.Visible = false end
+		end))
+	end
+
+	local function toggle()
+		if opened then close() else open() end
+	end
+
+	track(avatarBtn.MouseButton1Click:Connect(toggle))
+	track(avatarBtn.MouseEnter:Connect(function()
+		tween(avatarBtn, 0.15, { BackgroundColor3 = Palette.RowHover })
+	end))
+	track(avatarBtn.MouseLeave:Connect(function()
+		tween(avatarBtn, 0.15, { BackgroundColor3 = Palette.Dark })
+	end))
+
+	track(UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then return end
+		if not opened then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			local mp = UserInputService:GetMouseLocation()
+			local abs = panel.AbsolutePosition
+			local size = panel.AbsoluteSize
+			local avAbs = avatarBtn.AbsolutePosition
+			local avSize = avatarBtn.AbsoluteSize
+			local insidePanel = mp.X >= abs.X and mp.X <= abs.X + size.X and mp.Y >= abs.Y and mp.Y <= abs.Y + size.Y
+			local insideBtn = mp.X >= avAbs.X and mp.X <= avAbs.X + avSize.X and mp.Y >= avAbs.Y and mp.Y <= avAbs.Y + avSize.Y
+			if not insidePanel and not insideBtn then close() end
+		end
+	end))
+
+	track(UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then return end
+		if input.KeyCode == Enum.KeyCode.Escape and opened then close() end
+	end))
+
+	return {
+		Open = open,
+		Close = close,
+		Toggle = toggle,
+		IsOpen = function() return opened end,
+		Frame = panel,
+		Refresh = function()
+			rDisplay.Text = LocalPlayer.DisplayName or LocalPlayer.Name
+			rUser.Text = "@" .. LocalPlayer.Name
+			rId.Text = tostring(LocalPlayer.UserId)
+			rAge.Text = tostring(LocalPlayer.AccountAge) .. " days"
+			refreshClothing()
+		end,
+	}
+end
 
 function Acursive:CreateWindow(opts)
 	opts = opts or {}
@@ -339,6 +796,7 @@ function Acursive:CreateWindow(opts)
 	self_.TabWidth = opts.TabWidth or 90
 	self_.HeaderHeight = opts.HeaderHeight or 16
 	self_.ShowBranding = opts.ShowBranding ~= false
+	self_.ShowProfile = opts.ShowProfile ~= false
 
 	self_.Pages = {}
 	self_.Tabs = {}
@@ -347,6 +805,7 @@ function Acursive:CreateWindow(opts)
 	self_.Visible = true
 	self_.Toggles = {}
 	self_.LastToggleTime = 0
+	self_.Destroyed = false
 
 	if THEMES[opts.Theme or ""] then
 		CurrentTheme = opts.Theme
@@ -404,7 +863,8 @@ function Acursive:CreateWindow(opts)
 	registerAccent(NavGlow)
 
 	local TabContainer = Instance.new("Frame")
-	TabContainer.Size = UDim2.new(1, 0, 1, 0)
+	TabContainer.Size = UDim2.new(1, -80, 1, 0)
+	TabContainer.Position = UDim2.new(0, 40, 0, 0)
 	TabContainer.BackgroundTransparency = 1
 	TabContainer.Parent = NavWrap
 	self_.TabContainer = TabContainer
@@ -471,25 +931,26 @@ function Acursive:CreateWindow(opts)
 
 	if self_.Draggable then
 		local dragging, dragStart, startPos = false, nil, nil
-		DragBar.InputBegan:Connect(function(input)
+		track(DragBar.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 				dragging = true
 				dragStart = input.Position
 				startPos = Main.Position
 				tween(DragBar, 0.15, { BackgroundColor3 = Accent })
 			end
-		end)
-		UserInputService.InputChanged:Connect(function(input)
+		end))
+		track(UserInputService.InputChanged:Connect(function(input)
 			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 				local delta = input.Position - dragStart
 				Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 			end
-		end)
-		UserInputService.InputEnded:Connect(function(input)
+		end))
+		track(UserInputService.InputEnded:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 				dragging = false
+				tween(DragBar, 0.15, { BackgroundColor3 = Color3.fromRGB(50, 50, 50) })
 			end
-		end)
+		end))
 	end
 
 	local function makeGradient(parent)
@@ -506,9 +967,12 @@ function Acursive:CreateWindow(opts)
 	makeGradient(NavAccent)
 	makeGradient(TabIndicator)
 
-	function self_:GetConfigFile()
-		return self_.ConfigFile
+	self_.Profile = nil
+	if self_.ShowProfile then
+		self_.Profile = createProfilePanel(self_)
 	end
+
+	function self_:GetConfigFile() return self_.ConfigFile end
 
 	function self_:SaveConfig()
 		if not self_.ConfigFile then return end
@@ -557,7 +1021,7 @@ function Acursive:CreateWindow(opts)
 	local mainTween
 
 	function self_:Resize(instant)
-		if not self_.Visible then return end
+		if not self_.Visible or self_.Destroyed then return end
 		local target = computeHeight()
 		if mainTween then mainTween:Cancel() end
 		local targetSize = UDim2.new(0, self_.Size.X.Offset, 0, target)
@@ -569,6 +1033,7 @@ function Acursive:CreateWindow(opts)
 	end
 
 	function self_:Show()
+		if self_.Destroyed then return end
 		if self_.Visible then return end
 		self_.Visible = true
 		local targetH = computeHeight()
@@ -590,6 +1055,7 @@ function Acursive:CreateWindow(opts)
 	function self_:Hide()
 		if not self_.Visible then return end
 		self_.Visible = false
+		if self_.Profile then self_.Profile.Close() end
 		tween(Main, 0.4, { Size = UDim2.new(0, self_.Size.X.Offset, 0, 0), Position = UDim2.new(0.5, 0, 0, 40) }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 		tween(NavWrap, 0.4, { Position = UDim2.new(0.5, 0, 0, -50), BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 		tween(NavStroke, 0.4, { Transparency = 1 })
@@ -601,26 +1067,13 @@ function Acursive:CreateWindow(opts)
 		if self_.Visible then self_:Hide() else self_:Show() end
 	end
 
-	function self_:SetToggleKey(key)
-		self_.ToggleKey = key
-	end
-
-	function self_:SetTitle(title)
-		self_.Title = title
-	end
-
-	function self_:SetSubtitle(subtitle)
-		self_.Subtitle = subtitle
-	end
-
-	function self_:SetPosition(pos)
-		Main.Position = pos
-	end
-
-	function self_:SetSize(size)
-		self_.Size = size
-		self_:Resize(true)
-	end
+	function self_:SetToggleKey(key) self_.ToggleKey = key end
+	function self_:SetTitle(title) self_.Title = title end
+	function self_:SetSubtitle(subtitle) self_.Subtitle = subtitle end
+	function self_:SetPosition(pos) Main.Position = pos end
+	function self_:SetSize(size) self_.Size = size self_:Resize(true) end
+	function self_:IsVisible() return self_.Visible end
+	function self_:GetProfile() return self_.Profile end
 
 	function self_:SelectTab(name)
 		if not self_.Tabs[name] or self_.CurrentTab == name then return end
@@ -646,6 +1099,7 @@ function Acursive:CreateWindow(opts)
 	end
 
 	function self_:CreateTab(name, order)
+		if self_.Destroyed then return nil end
 		self_.TabOrder = self_.TabOrder + 1
 		local orderNum = order or self_.TabOrder
 
@@ -675,10 +1129,10 @@ function Acursive:CreateWindow(opts)
 		layout.Padding = UDim.new(0, 8)
 		layout.Parent = page
 
-		layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		track(layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 			page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 14)
 			if self_.CurrentTab == name then self_:Resize(false) end
-		end)
+		end))
 
 		self_.Pages[name] = page
 
@@ -696,19 +1150,19 @@ function Acursive:CreateWindow(opts)
 		btn.Parent = TabContainer
 		self_.Tabs[name] = btn
 
-		btn.MouseEnter:Connect(function()
+		track(btn.MouseEnter:Connect(function()
 			if self_.CurrentTab ~= name then
 				tween(btn, 0.15, { TextColor3 = Palette.Text })
 			end
-		end)
-		btn.MouseLeave:Connect(function()
+		end))
+		track(btn.MouseLeave:Connect(function()
 			if self_.CurrentTab ~= name then
 				tween(btn, 0.15, { TextColor3 = Palette.Muted })
 			end
-		end)
-		btn.MouseButton1Click:Connect(function()
+		end))
+		track(btn.MouseButton1Click:Connect(function()
 			self_:SelectTab(name)
-		end)
+		end))
 
 		local tab = setmetatable({}, TabClass)
 		tab.Window = self_
@@ -716,22 +1170,24 @@ function Acursive:CreateWindow(opts)
 		tab.Page = page
 		tab._order = 0
 		tab.Sections = {}
+		tab.Destroyed = false
 		return tab
 	end
 
 	if not self_.CurrentTab then
-		task.defer(function()
+		trackThread(task.defer(function()
 			local first
 			for _, b in ipairs(TabContainer:GetChildren()) do
 				if b:IsA("TextButton") then first = b break end
 			end
 			if first then self_:SelectTab(first.Text) end
-		end)
+		end))
 	end
 
 	if self_.ToggleKey then
-		UserInputService.InputBegan:Connect(function(input, processed)
+		track(UserInputService.InputBegan:Connect(function(input, processed)
 			if processed then return end
+			if self_.Destroyed then return end
 			if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 			if keyCapture then return end
 			if isTyping() then return end
@@ -741,22 +1197,21 @@ function Acursive:CreateWindow(opts)
 				self_.LastToggleTime = now
 				self_:Toggle()
 			end
-		end)
+		end))
 	end
 
-	task.spawn(function()
+	table.insert(trackedWindows, self_)
+
+	trackThread(task.spawn(function()
 		RunService.RenderStepped:Wait()
 		RunService.RenderStepped:Wait()
+		if self_.Destroyed then return end
 		local cfg = self_:LoadConfig()
 		if cfg then
-			if cfg.theme and THEMES[cfg.theme] then
-				CurrentTheme = cfg.theme
-			end
+			if cfg.theme and THEMES[cfg.theme] then CurrentTheme = cfg.theme end
 			for label, val in pairs(cfg.toggles or {}) do
 				local entry = self_.Toggles[label]
-				if entry and entry.set then
-					pcall(function() entry.set(val) end)
-				end
+				if entry and entry.set then pcall(function() entry.set(val) end) end
 			end
 			if cfg.rgbMode then
 				RGBMode = true
@@ -769,6 +1224,7 @@ function Acursive:CreateWindow(opts)
 				self_:SelectTab(cfg.lastTab)
 			end
 		end
+		if self_.Destroyed then return end
 		local targetH = computeHeight()
 		Main.Size = UDim2.new(0, self_.Size.X.Offset, 0, 0)
 		tween(NavWrap, 0.55, { Position = UDim2.new(0.5, 0, 0, 14), BackgroundTransparency = 0 }, Enum.EasingStyle.Quart)
@@ -777,6 +1233,7 @@ function Acursive:CreateWindow(opts)
 		task.wait(0.15)
 		tween(Main, 0.6, { Size = UDim2.new(0, self_.Size.X.Offset, 0, targetH) }, Enum.EasingStyle.Quart)
 		task.wait(0.4)
+		if self_.Destroyed then return end
 		if self_.CurrentTab and self_.Tabs[self_.CurrentTab] then
 			local t = self_.Tabs[self_.CurrentTab]
 			local relX = t.AbsolutePosition.X - NavWrap.AbsolutePosition.X + t.AbsoluteSize.X / 2
@@ -787,25 +1244,29 @@ function Acursive:CreateWindow(opts)
 		if self_.ShowBranding then
 			Acursive:Notify({ Title = self_.Title, Content = "Loaded successfully", Duration = 4 })
 		end
-	end)
+	end))
 
 	return self_
 end
 
-function WindowClass:Notify(opts)
-	return Acursive:Notify(opts)
-end
+function WindowClass:Notify(opts) return Acursive:Notify(opts) end
 
 function WindowClass:Destroy()
+	if self_.Destroyed then return end
+	self_.Destroyed = true
 	pcall(function() self_:SaveConfig() end)
 	for _, c in ipairs(accentGradients) do
-		pcall(function() c:Destroy() end)
+		pcall(function() if c and c.Parent then c:Destroy() end end)
 	end
-	pcall(function() self_.NavWrap:Destroy() end)
-	pcall(function() self_.Main:Destroy() end)
+	pcall(function() if self_.NavWrap then self_.NavWrap:Destroy() end end)
+	pcall(function() if self_.Main then self_.Main:Destroy() end end)
+	for i = #trackedWindows, 1, -1 do
+		if trackedWindows[i] == self_ then table.remove(trackedWindows, i) end
+	end
 end
 
 function TabClass:CreateSection(title, order)
+	if self.Destroyed then return nil end
 	self._order = self._order + 1
 	local orderNum = order or self._order
 
@@ -884,16 +1345,10 @@ function TabClass:CreateSection(title, order)
 	sec.Header = header
 	sec.Title = title
 	sec.Collapsed = false
+	sec.Items = {}
 
-	function sec:SetTitle(t)
-		header.Text = t
-		sec.Title = t
-	end
-
-	function sec:SetVisible(v)
-		section.Visible = v
-	end
-
+	function sec:SetTitle(t) header.Text = t sec.Title = t end
+	function sec:SetVisible(v) section.Visible = v end
 	function sec:SetCollapsed(v)
 		sec.Collapsed = v
 		body.Visible = not v
@@ -998,12 +1453,12 @@ function TabClass:CreateSection(title, order)
 		table.insert(activeKeybinds, keyEntry)
 
 		local function setState(newState, fire)
-			state = newState
+			state = newState and true or false
 			box.BackgroundColor3 = state and Accent or Color3.fromRGB(28, 28, 28)
 			boxStroke.Color = state and Accent or Palette.Outline
 			ind.Text = state and "on" or "off"
 			ind.TextColor3 = state and Accent or Palette.Muted
-			if fire and callback then callback(state) end
+			if fire and callback then safeCall(callback, state) end
 		end
 
 		registerAccentFn(function()
@@ -1027,21 +1482,21 @@ function TabClass:CreateSection(title, order)
 			keyBtn.Text = tostring(defaultKey):gsub("Enum.KeyCode.", "")
 		end
 
-		row.MouseEnter:Connect(function()
+		track(row.MouseEnter:Connect(function()
 			tween(row, 0.15, { BackgroundColor3 = Palette.RowHover })
-		end)
-		row.MouseLeave:Connect(function()
+		end))
+		track(row.MouseLeave:Connect(function()
 			tween(row, 0.15, { BackgroundColor3 = Palette.Row })
-		end)
+		end))
 
 		if onDoubleClick then
 			local pending, lastTime = nil, 0
-			row.MouseButton1Click:Connect(function()
+			track(row.MouseButton1Click:Connect(function()
 				local now = tick()
 				if now - lastTime < 0.3 then
 					if pending then task.cancel(pending) pending = nil end
 					lastTime = 0
-					onDoubleClick()
+					safeCall(onDoubleClick)
 					return
 				end
 				lastTime = now
@@ -1050,23 +1505,23 @@ function TabClass:CreateSection(title, order)
 					setState(not state, true)
 					sec.Window:SaveConfig()
 				end)
-			end)
+			end))
 		else
-			row.MouseButton1Click:Connect(function()
+			track(row.MouseButton1Click:Connect(function()
 				setState(not state, true)
 				sec.Window:SaveConfig()
-			end)
+			end))
 		end
 
-		keyBtn.MouseEnter:Connect(function()
+		track(keyBtn.MouseEnter:Connect(function()
 			tween(keyBtn, 0.15, { TextColor3 = Accent, BackgroundColor3 = Color3.fromRGB(24, 24, 24) })
 			tween(kbStroke, 0.15, { Color = Accent })
-		end)
-		keyBtn.MouseLeave:Connect(function()
+		end))
+		track(keyBtn.MouseLeave:Connect(function()
 			tween(keyBtn, 0.15, { TextColor3 = Palette.Muted, BackgroundColor3 = Palette.Input })
 			tween(kbStroke, 0.15, { Color = Palette.Outline })
-		end)
-		keyBtn.MouseButton1Click:Connect(function()
+		end))
+		track(keyBtn.MouseButton1Click:Connect(function()
 			if keyCapture then return end
 			keyBtn.Text = "..."
 			keyCapture = function(keyCode)
@@ -1077,7 +1532,7 @@ function TabClass:CreateSection(title, order)
 				end
 				keyBtn.Text = tostring(keyCode):gsub("Enum.KeyCode.", "")
 			end
-		end)
+		end))
 
 		sec.Window.Toggles[label] = {
 			get = function() return state end,
@@ -1175,25 +1630,25 @@ function TabClass:CreateSection(title, order)
 			value = min + (max - min) * pos
 			fill.Size = UDim2.new(pos, 0, 1, 0)
 			valLbl.Text = string.format("%." .. decimals .. "f%s", value, suffix)
-			if callback then callback(value) end
+			if callback then safeCall(callback, value) end
 		end
 
-		bar.InputBegan:Connect(function(input)
+		track(bar.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 				sliderDrag = true
 				update(input)
 			end
-		end)
-		UserInputService.InputChanged:Connect(function(input)
+		end))
+		track(UserInputService.InputChanged:Connect(function(input)
 			if sliderDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 				update(input)
 			end
-		end)
-		UserInputService.InputEnded:Connect(function(input)
+		end))
+		track(UserInputService.InputEnded:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 				sliderDrag = false
 			end
-		end)
+		end))
 
 		return {
 			Set = function(v)
@@ -1201,7 +1656,7 @@ function TabClass:CreateSection(title, order)
 				local pos = (value - min) / (max - min)
 				fill.Size = UDim2.new(pos, 0, 1, 0)
 				valLbl.Text = string.format("%." .. decimals .. "f%s", value, suffix)
-				if callback then callback(value) end
+				if callback then safeCall(callback, value) end
 			end,
 			Get = function() return value end,
 			SetVisible = function(v) row.Visible = v end,
@@ -1238,17 +1693,17 @@ function TabClass:CreateSection(title, order)
 		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		stroke.Parent = btn
 
-		btn.MouseEnter:Connect(function()
+		track(btn.MouseEnter:Connect(function()
 			tween(btn, 0.15, { BackgroundColor3 = Palette.RowHover, TextColor3 = Accent })
 			tween(stroke, 0.15, { Color = Accent })
-		end)
-		btn.MouseLeave:Connect(function()
+		end))
+		track(btn.MouseLeave:Connect(function()
 			tween(btn, 0.15, { BackgroundColor3 = Palette.Row, TextColor3 = Palette.Text })
 			tween(stroke, 0.15, { Color = Palette.Outline })
-		end)
-		btn.MouseButton1Click:Connect(function()
-			if callback then callback() end
-		end)
+		end))
+		track(btn.MouseButton1Click:Connect(function()
+			if callback then safeCall(callback) end
+		end))
 
 		return {
 			SetName = function(t) btn.Text = t end,
@@ -1307,7 +1762,7 @@ function TabClass:CreateSection(title, order)
 		valLbl.Size = UDim2.new(0, 80, 1, 0)
 		valLbl.Position = UDim2.new(1, -90, 0, 0)
 		valLbl.BackgroundTransparency = 1
-		valLbl.Text = selected
+		valLbl.Text = tostring(selected)
 		valLbl.TextColor3 = Accent
 		valLbl.TextSize = 11
 		valLbl.Font = Enum.Font.Gotham
@@ -1341,7 +1796,7 @@ function TabClass:CreateSection(title, order)
 			tween(wrap, 0.25, { Size = UDim2.new(1, 0, 0, 22) }, Enum.EasingStyle.Quart)
 		end
 
-		for i, opt in ipairs(options) do
+		local function makeOption(opt, i)
 			local o = Instance.new("TextButton")
 			o.Size = UDim2.new(1, 0, 0, 20)
 			o.BackgroundColor3 = Palette.Panel
@@ -1356,26 +1811,29 @@ function TabClass:CreateSection(title, order)
 			o.LayoutOrder = i
 			o.Parent = bodyFrame
 
-			o.MouseEnter:Connect(function()
+			track(o.MouseEnter:Connect(function()
 				tween(o, 0.15, { BackgroundTransparency = 0, BackgroundColor3 = Palette.RowHover, TextColor3 = Palette.Text })
-			end)
-			o.MouseLeave:Connect(function()
+			end))
+			track(o.MouseLeave:Connect(function()
 				tween(o, 0.15, { BackgroundTransparency = 1, TextColor3 = Palette.Muted })
-			end)
-			o.MouseButton1Click:Connect(function()
+			end))
+			track(o.MouseButton1Click:Connect(function()
 				selected = opt
 				valLbl.Text = tostring(opt)
 				closeDropdown()
-				if callback then callback(selected) end
+				if callback then safeCall(callback, selected) end
 				sec.Window:SaveConfig()
-			end)
+			end))
+			return o
 		end
 
-		head.MouseButton1Click:Connect(function()
+		for i, opt in ipairs(options) do makeOption(opt, i) end
+
+		track(head.MouseButton1Click:Connect(function()
 			expanded = not expanded
 			local target = expanded and UDim2.new(1, 0, 0, 22 + #options * 20) or UDim2.new(1, 0, 0, 22)
 			tween(wrap, 0.25, { Size = target }, Enum.EasingStyle.Quart)
-		end)
+		end))
 
 		return {
 			Select = function(v)
@@ -1383,7 +1841,7 @@ function TabClass:CreateSection(title, order)
 					if o == v then
 						selected = v
 						valLbl.Text = tostring(v)
-						if callback then callback(selected) end
+						if callback then safeCall(callback, selected) end
 						break
 					end
 				end
@@ -1395,32 +1853,9 @@ function TabClass:CreateSection(title, order)
 				end
 				options = newOpts
 				bodyFrame.Size = UDim2.new(1, 0, 0, #options * 20)
-				for i, opt in ipairs(options) do
-					local o = Instance.new("TextButton")
-					o.Size = UDim2.new(1, 0, 0, 20)
-					o.BackgroundColor3 = Palette.Panel
-					o.BackgroundTransparency = 1
-					o.BorderSizePixel = 0
-					o.Text = "   " .. tostring(opt)
-					o.TextColor3 = Palette.Muted
-					o.TextSize = 11
-					o.Font = Enum.Font.Gotham
-					o.TextXAlignment = Enum.TextXAlignment.Left
-					o.AutoButtonColor = false
-					o.LayoutOrder = i
-					o.Parent = bodyFrame
-					o.MouseEnter:Connect(function()
-						tween(o, 0.15, { BackgroundTransparency = 0, BackgroundColor3 = Palette.RowHover, TextColor3 = Palette.Text })
-					end)
-					o.MouseLeave:Connect(function()
-						tween(o, 0.15, { BackgroundTransparency = 1, TextColor3 = Palette.Muted })
-					end)
-					o.MouseButton1Click:Connect(function()
-						selected = opt
-						valLbl.Text = tostring(opt)
-						closeDropdown()
-						if callback then callback(selected) end
-					end)
+				for i, opt in ipairs(options) do makeOption(opt, i) end
+				if expanded then
+					wrap.Size = UDim2.new(1, 0, 0, 22 + #options * 20)
 				end
 			end,
 			SetVisible = function(v) wrap.Visible = v end,
@@ -1517,7 +1952,7 @@ function TabClass:CreateSection(title, order)
 		local function fire()
 			local arr = {}
 			for k in pairs(selected) do table.insert(arr, k) end
-			if callback then callback(arr) end
+			if callback then safeCall(callback, arr) end
 		end
 
 		for i, opt in ipairs(options) do
@@ -1535,13 +1970,13 @@ function TabClass:CreateSection(title, order)
 			o.LayoutOrder = i
 			o.Parent = bodyFrame
 
-			o.MouseEnter:Connect(function()
+			track(o.MouseEnter:Connect(function()
 				tween(o, 0.15, { BackgroundTransparency = 0, BackgroundColor3 = Palette.RowHover })
-			end)
-			o.MouseLeave:Connect(function()
+			end))
+			track(o.MouseLeave:Connect(function()
 				tween(o, 0.15, { BackgroundTransparency = 1 })
-			end)
-			o.MouseButton1Click:Connect(function()
+			end))
+			track(o.MouseButton1Click:Connect(function()
 				if selected[opt] then
 					selected[opt] = nil
 					o.TextColor3 = Palette.Muted
@@ -1551,15 +1986,15 @@ function TabClass:CreateSection(title, order)
 				end
 				updateText()
 				fire()
-			end)
+			end))
 		end
 
 		local expanded = false
-		head.MouseButton1Click:Connect(function()
+		track(head.MouseButton1Click:Connect(function()
 			expanded = not expanded
 			local target = expanded and UDim2.new(1, 0, 0, 22 + #options * 20) or UDim2.new(1, 0, 0, 22)
 			tween(wrap, 0.25, { Size = target }, Enum.EasingStyle.Quart)
-		end)
+		end))
 
 		return {
 			Get = function()
@@ -1612,6 +2047,7 @@ function TabClass:CreateSection(title, order)
 		head.BorderSizePixel = 0
 		head.Text = ""
 		head.AutoButtonColor = false
+		head.ClipsDescendants = true
 		head.Parent = wrap
 
 		local headCorner = Instance.new("UICorner")
@@ -1624,22 +2060,12 @@ function TabClass:CreateSection(title, order)
 		headStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		headStroke.Parent = head
 
-		local lbl = Instance.new("TextLabel")
-		lbl.Size = UDim2.new(1, -80, 1, 0)
-		lbl.Position = UDim2.new(0, 10, 0, 0)
-		lbl.BackgroundTransparency = 1
-		lbl.Text = label
-		lbl.TextColor3 = Palette.Text
-		lbl.TextSize = 11
-		lbl.Font = Enum.Font.Gotham
-		lbl.TextXAlignment = Enum.TextXAlignment.Left
-		lbl.Parent = head
-
 		local preview = Instance.new("Frame")
 		preview.Size = UDim2.new(0, 40, 0, 16)
 		preview.Position = UDim2.new(1, -48, 0.5, -8)
 		preview.BackgroundColor3 = current
 		preview.BorderSizePixel = 0
+		preview.ZIndex = 1
 		preview.Parent = head
 
 		local pc = Instance.new("UICorner")
@@ -1651,6 +2077,34 @@ function TabClass:CreateSection(title, order)
 		ps.Thickness = 1
 		ps.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		ps.Parent = preview
+
+		local lbl = Instance.new("TextLabel")
+		lbl.Size = UDim2.new(1, -80, 1, 0)
+		lbl.Position = UDim2.new(0, 10, 0, 0)
+		lbl.BackgroundTransparency = 1
+		lbl.Text = label
+		lbl.TextColor3 = Palette.Text
+		lbl.TextSize = 11
+		lbl.Font = Enum.Font.Gotham
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		lbl.ZIndex = 3
+		lbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+		lbl.TextStrokeTransparency = 1
+		lbl.Parent = head
+
+		local hexLbl = Instance.new("TextLabel")
+		hexLbl.Size = UDim2.new(0, 90, 1, 0)
+		hexLbl.Position = UDim2.new(1, -100, 0, 0)
+		hexLbl.BackgroundTransparency = 1
+		hexLbl.Text = string.format("#%02X%02X%02X", math.floor(current.R * 255), math.floor(current.G * 255), math.floor(current.B * 255))
+		hexLbl.TextColor3 = Palette.Text
+		hexLbl.TextSize = 11
+		hexLbl.Font = Enum.Font.Code
+		hexLbl.TextXAlignment = Enum.TextXAlignment.Right
+		hexLbl.ZIndex = 3
+		hexLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+		hexLbl.TextStrokeTransparency = 1
+		hexLbl.Parent = head
 
 		local pickerBody = Instance.new("Frame")
 		pickerBody.Size = UDim2.new(1, 0, 0, BODY_H)
@@ -1812,12 +2266,17 @@ function TabClass:CreateSection(title, order)
 		local magnifier = nil
 		local magnifierGlow = nil
 
+		local function hexText()
+			return string.format("#%02X%02X%02X", math.floor(current.R * 255), math.floor(current.G * 255), math.floor(current.B * 255))
+		end
+
 		local function refreshAll()
 			satSquare.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
 			satCursor.Position = UDim2.new(s, 0, 1 - v, 0)
 			hueCursor.Position = UDim2.new(h, 0, 0.5, 0)
 			preview.BackgroundColor3 = current
-			hexBox.Text = string.format("#%02X%02X%02X", math.floor(current.R * 255), math.floor(current.G * 255), math.floor(current.B * 255))
+			hexBox.Text = hexText()
+			hexLbl.Text = hexText()
 		end
 
 		local function showMagnifier()
@@ -1895,9 +2354,9 @@ function TabClass:CreateSection(title, order)
 					Size = UDim2.new(0, 0, 0, 0),
 					BackgroundTransparency = 1,
 				}):Play()
-				task.delay(0.25, function()
-					if m then pcall(function() m:Destroy() end) end
-				end)
+				trackThread(task.delay(0.25, function()
+					if m and m.Parent then pcall(function() m:Destroy() end) end
+				end))
 			end
 		end
 
@@ -1910,7 +2369,7 @@ function TabClass:CreateSection(title, order)
 			v = 1 - relY
 			current = Color3.fromHSV(h, s, v)
 			refreshAll()
-			if callback then callback(current) end
+			if callback then safeCall(callback, current) end
 		end
 
 		local function updateFromHue(input)
@@ -1918,25 +2377,25 @@ function TabClass:CreateSection(title, order)
 			h = relX
 			current = Color3.fromHSV(h, s, v)
 			refreshAll()
-			if callback then callback(current) end
+			if callback then safeCall(callback, current) end
 		end
 
-		satSquare.InputBegan:Connect(function(input)
+		track(satSquare.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 				draggingSat = true
 				updateFromSat(input)
 				showMagnifier()
 			end
-		end)
+		end))
 
-		hueSlider.InputBegan:Connect(function(input)
+		track(hueSlider.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 				draggingHue = true
 				updateFromHue(input)
 			end
-		end)
+		end))
 
-		UserInputService.InputChanged:Connect(function(input)
+		track(UserInputService.InputChanged:Connect(function(input)
 			if draggingSat and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 				updateFromSat(input)
 				showMagnifier()
@@ -1944,9 +2403,9 @@ function TabClass:CreateSection(title, order)
 			if draggingHue and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 				updateFromHue(input)
 			end
-		end)
+		end))
 
-		UserInputService.InputEnded:Connect(function(input)
+		track(UserInputService.InputEnded:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 				if draggingSat then
 					draggingSat = false
@@ -1958,9 +2417,9 @@ function TabClass:CreateSection(title, order)
 					sec.Window:SaveConfig()
 				end
 			end
-		end)
+		end))
 
-		hexBox.FocusLost:Connect(function()
+		track(hexBox.FocusLost:Connect(function()
 			local hex = hexBox.Text:gsub("#", "")
 			if #hex == 6 then
 				local rn = tonumber(hex:sub(1, 2), 16)
@@ -1970,32 +2429,50 @@ function TabClass:CreateSection(title, order)
 					current = Color3.fromRGB(rn, gn, bn)
 					h, s, v = Color3.toHSV(current)
 					refreshAll()
-					if callback then callback(current) end
+					if callback then safeCall(callback, current) end
 				end
 			end
-		end)
-		hexBox.Focused:Connect(function()
+		end))
+		track(hexBox.Focused:Connect(function()
 			tween(hbStroke, 0.15, { Color = Accent })
-		end)
-		hexBox.FocusLost:Connect(function()
+		end))
+		track(hexBox.FocusLost:Connect(function()
 			tween(hbStroke, 0.15, { Color = Palette.Outline })
-		end)
+		end))
 
 		local function toggleExpand()
 			expanded = not expanded
 			local target = expanded and UDim2.new(1, 0, 0, EXPANDED_H) or UDim2.new(1, 0, 0, HEAD_H)
 			tween(wrap, 0.28, { Size = target }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 			tween(headStroke, 0.2, { Color = expanded and Accent or Palette.Outline })
+			if expanded then
+				tween(preview, 0.28, {
+					Size = UDim2.new(1, 0, 1, 0),
+					Position = UDim2.new(0, 0, 0, 0),
+				}, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+				tween(ps, 0.2, { Transparency = 1 })
+				tween(pc, 0.2, { CornerRadius = UDim.new(0, 2) })
+				tween(lbl, 0.2, { TextStrokeTransparency = 0.3 })
+				tween(hexLbl, 0.2, { TextStrokeTransparency = 0.3 })
+			else
+				tween(preview, 0.28, {
+					Size = UDim2.new(0, 40, 0, 16),
+					Position = UDim2.new(1, -48, 0.5, -8),
+				}, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+				tween(ps, 0.2, { Transparency = 0 })
+				tween(lbl, 0.2, { TextStrokeTransparency = 1 })
+				tween(hexLbl, 0.2, { TextStrokeTransparency = 1 })
+			end
 		end
 
-		head.MouseButton1Click:Connect(toggleExpand)
+		track(head.MouseButton1Click:Connect(toggleExpand))
 
-		head.MouseEnter:Connect(function()
-			tween(head, 0.15, { BackgroundColor3 = Palette.RowHover })
-		end)
-		head.MouseLeave:Connect(function()
-			tween(head, 0.15, { BackgroundColor3 = Palette.Row })
-		end)
+		track(head.MouseEnter:Connect(function()
+			if not expanded then tween(head, 0.15, { BackgroundColor3 = Palette.RowHover }) end
+		end))
+		track(head.MouseLeave:Connect(function()
+			if not expanded then tween(head, 0.15, { BackgroundColor3 = Palette.Row }) end
+		end))
 
 		refreshAll()
 
@@ -2005,16 +2482,12 @@ function TabClass:CreateSection(title, order)
 				current = c
 				h, s, v = Color3.toHSV(c)
 				refreshAll()
-				if callback then callback(c) end
+				if callback then safeCall(callback, c) end
 			end,
 			SetVisible = function(vv) wrap.Visible = vv end,
 			SetName = function(t) lbl.Text = t end,
-			Expand = function()
-				if not expanded then toggleExpand() end
-			end,
-			Collapse = function()
-				if expanded then toggleExpand() end
-			end,
+			Expand = function() if not expanded then toggleExpand() end end,
+			Collapse = function() if expanded then toggleExpand() end end,
 		}
 	end
 
@@ -2077,25 +2550,25 @@ function TabClass:CreateSection(title, order)
 		kbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		kbStroke.Parent = keyBtn
 
-		local keyEntry = { key = defaultKey, callback = function() if callback then callback() end end }
+		local keyEntry = { key = defaultKey, callback = function() if callback then safeCall(callback) end end }
 		table.insert(activeKeybinds, keyEntry)
 
-		keyBtn.MouseEnter:Connect(function()
+		track(keyBtn.MouseEnter:Connect(function()
 			tween(keyBtn, 0.15, { BackgroundColor3 = Color3.fromRGB(24, 24, 24) })
 			tween(kbStroke, 0.15, { Color = Accent })
-		end)
-		keyBtn.MouseLeave:Connect(function()
+		end))
+		track(keyBtn.MouseLeave:Connect(function()
 			tween(keyBtn, 0.15, { BackgroundColor3 = Palette.Input })
 			tween(kbStroke, 0.15, { Color = Palette.Outline })
-		end)
-		keyBtn.MouseButton1Click:Connect(function()
+		end))
+		track(keyBtn.MouseButton1Click:Connect(function()
 			if keyCapture then return end
 			keyBtn.Text = "..."
 			keyCapture = function(keyCode)
 				keyEntry.key = keyCode
 				keyBtn.Text = tostring(keyCode):gsub("Enum.KeyCode.", "")
 			end
-		end)
+		end))
 
 		return {
 			Get = function() return keyEntry.key end,
@@ -2173,17 +2646,17 @@ function TabClass:CreateSection(title, order)
 		pad.PaddingLeft = UDim.new(0, 6)
 		pad.Parent = box
 
-		box.FocusLost:Connect(function()
+		track(box.FocusLost:Connect(function()
 			tween(bs, 0.15, { Color = Palette.Outline })
-			if callback then callback(box.Text) end
-		end)
-		box.Focused:Connect(function()
+			if callback then safeCall(callback, box.Text) end
+		end))
+		track(box.Focused:Connect(function()
 			tween(bs, 0.15, { Color = Accent })
-		end)
+		end))
 
 		return {
 			Get = function() return box.Text end,
-			Set = function(v) box.Text = v if callback then callback(v) end end,
+			Set = function(v) box.Text = v if callback then safeCall(callback, v) end end,
 			SetVisible = function(v) row.Visible = v end,
 			SetName = function(t) lbl.Text = t end,
 		}
