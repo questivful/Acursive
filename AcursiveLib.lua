@@ -38,7 +38,7 @@ local Palette = {
 
 Acursive.Themes = THEMES
 Acursive.Palette = Palette
-Acursive.Version = "1.4.0"
+Acursive.Version = "1.5.0"
 
 local Accent = THEMES.Orange.primary
 local AccentLight = THEMES.Orange.light
@@ -350,15 +350,22 @@ TabClass.__index = TabClass
 
 local DockManager = {}
 DockManager.panels = {}
-DockManager.container = nil
+DockManager.containers = {}
+DockManager.resize = { active = nil, startY = 0, startH = 0 }
 
-function DockManager:getContainer()
-	if self.container and self.container.Parent then return self.container end
+function DockManager:getContainer(side)
+	side = side or "right"
+	if self.containers[side] and self.containers[side].Parent then return self.containers[side] end
 	local sg = getScreenGui()
 	local c = Instance.new("Frame")
-	c.Name = "AcursiveDockRoot"
-	c.AnchorPoint = Vector2.new(1, 0)
-	c.Position = UDim2.new(1, -14, 0, 14)
+	c.Name = "AcursiveDock_" .. side
+	if side == "right" then
+		c.AnchorPoint = Vector2.new(1, 0)
+		c.Position = UDim2.new(1, -14, 0, 14)
+	else
+		c.AnchorPoint = Vector2.new(0, 0)
+		c.Position = UDim2.new(0, 14, 0, 14)
+	end
 	c.Size = UDim2.new(0, 300, 1, -28)
 	c.BackgroundTransparency = 1
 	c.ClipsDescendants = false
@@ -368,9 +375,9 @@ function DockManager:getContainer()
 	l.SortOrder = Enum.SortOrder.LayoutOrder
 	l.Padding = UDim.new(0, 10)
 	l.VerticalAlignment = Enum.VerticalAlignment.Top
-	l.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	l.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	l.Parent = c
-	self.container = c
+	self.containers[side] = c
 	return c
 end
 
@@ -388,9 +395,32 @@ function DockManager:getPanel(tab)
 	return nil
 end
 
+function DockManager:usedHeight(side)
+	local h = 0
+	local n = 0
+	for _, d in ipairs(self.panels) do
+		if d.side == side then
+			h = h + (d.panel and d.panel.AbsoluteSize.Y or 320)
+			n = n + 1
+		end
+	end
+	if n > 0 then h = h + (n - 1) * 10 end
+	return h
+end
+
+function DockManager:chooseSide()
+	local vy = 800
+	if workspace.CurrentCamera then vy = workspace.CurrentCamera.ViewportSize.Y end
+	local available = vy - 28
+	local usedRight = self:usedHeight("right")
+	if usedRight + 330 <= available then return "right" end
+	return "left"
+end
+
 function DockManager:dock(tab)
 	if self:isDocked(tab) then return end
-	local container = self:getContainer()
+	local side = self:chooseSide()
+	local container = self:getContainer(side)
 
 	local panel = Instance.new("Frame")
 	panel.Name = "Dock_" .. tab.Name
@@ -445,6 +475,7 @@ function DockManager:dock(tab)
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.Size = UDim2.new(0, 18, 0, 18)
 	closeBtn.Position = UDim2.new(1, -22, 0.5, -9)
+	closeBtn.BackgroundTransparency = 1
 	closeBtn.BackgroundColor3 = Palette.Row
 	closeBtn.BorderSizePixel = 0
 	closeBtn.Text = "×"
@@ -460,7 +491,7 @@ function DockManager:dock(tab)
 	cbCorner.Parent = closeBtn
 
 	local contentWrap = Instance.new("Frame")
-	contentWrap.Size = UDim2.new(1, -8, 1, -34)
+	contentWrap.Size = UDim2.new(1, -8, 1, -38)
 	contentWrap.Position = UDim2.new(0, 4, 0, 30)
 	contentWrap.BackgroundTransparency = 1
 	contentWrap.ClipsDescendants = true
@@ -474,17 +505,53 @@ function DockManager:dock(tab)
 
 	tab.Docked = true
 
+	local resizeHandle = Instance.new("Frame")
+	resizeHandle.Size = UDim2.new(1, 0, 0, 8)
+	resizeHandle.Position = UDim2.new(0, 0, 1, -8)
+	resizeHandle.BackgroundTransparency = 1
+	resizeHandle.ZIndex = 30
+	resizeHandle.Parent = panel
+
+	local grip = Instance.new("Frame")
+	grip.AnchorPoint = Vector2.new(0.5, 0.5)
+	grip.Size = UDim2.new(0, 28, 0, 2)
+	grip.Position = UDim2.new(0.5, 0, 0.5, 0)
+	grip.BackgroundColor3 = Palette.Outline
+	grip.BorderSizePixel = 0
+	grip.ZIndex = 31
+	grip.Parent = resizeHandle
+
+	local gripCorner = Instance.new("UICorner")
+	gripCorner.CornerRadius = UDim.new(1, 0)
+	gripCorner.Parent = grip
+
 	track(closeBtn.MouseEnter:Connect(function()
-		tween(closeBtn, 0.15, { BackgroundColor3 = Palette.RowHover, TextColor3 = Accent })
+		tween(closeBtn, 0.15, { TextColor3 = Accent })
+		tween(grip, 0.15, { BackgroundColor3 = Accent })
 	end))
 	track(closeBtn.MouseLeave:Connect(function()
-		tween(closeBtn, 0.15, { BackgroundColor3 = Palette.Row, TextColor3 = Palette.Muted })
+		tween(closeBtn, 0.15, { TextColor3 = Palette.Muted })
 	end))
 	track(closeBtn.MouseButton1Click:Connect(function()
 		DockManager:undock(tab)
 	end))
 
-	table.insert(self.panels, { tab = tab, panel = panel, content = contentWrap })
+	track(resizeHandle.MouseEnter:Connect(function()
+		tween(grip, 0.15, { BackgroundColor3 = Accent })
+	end))
+	track(resizeHandle.MouseLeave:Connect(function()
+		tween(grip, 0.15, { BackgroundColor3 = Palette.Outline })
+	end))
+
+	track(resizeHandle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			DockManager.resize.active = panel
+			DockManager.resize.startY = input.Position.Y
+			DockManager.resize.startH = panel.AbsoluteSize.Y
+		end
+	end))
+
+	table.insert(self.panels, { tab = tab, panel = panel, content = contentWrap, side = side })
 	panel.Size = UDim2.new(1, 0, 0, 0)
 	tween(panel, 0.3, { Size = UDim2.new(1, 0, 0, 320) }, Enum.EasingStyle.Quart)
 end
@@ -529,9 +596,27 @@ function DockManager:clearAll()
 		end)
 	end
 	table.clear(self.panels)
-	if self.container then pcall(function() self.container:Destroy() end) end
-	self.container = nil
+	for _, c in pairs(self.containers) do
+		if c then pcall(function() c:Destroy() end) end
+	end
+	self.containers = {}
 end
+
+track(UserInputService.InputChanged:Connect(function(input)
+	local panel = DockManager.resize.active
+	if not panel then return end
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		local dy = input.Position.Y - DockManager.resize.startY
+		local newH = math.clamp(DockManager.resize.startH + dy, 120, 900)
+		panel.Size = UDim2.new(1, 0, 0, newH)
+	end
+end))
+
+track(UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		DockManager.resize.active = nil
+	end
+end))
 
 local function buildViewportCharacter(viewport)
 	for _, c in ipairs(viewport:GetChildren()) do c:Destroy() end
@@ -576,8 +661,8 @@ local function buildViewportCharacter(viewport)
 			if d:IsA("BasePart") then
 				d.Anchored = true
 				d.CanCollide = false
-			elseif d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Sound") 
-				or d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Fire") 
+			elseif d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Sound")
+				or d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Fire")
 				or d:IsA("Smoke") or d:IsA("Sparkles") then
 				pcall(function() d:Destroy() end)
 			end
@@ -764,6 +849,26 @@ local function buildProfilePage(page, window)
 		task.wait(0.5)
 		updateClothing()
 	end))
+end
+
+local function computeNavWidth(window)
+	local buttons = {}
+	for _, c in ipairs(window.TabContainer:GetChildren()) do
+		if c:IsA("TextButton") then table.insert(buttons, c) end
+	end
+	if #buttons == 0 then return nil, buttons end
+	local vw = 800
+	if workspace.CurrentCamera then vw = workspace.CurrentCamera.ViewportSize.X end
+	local maxNav = math.min(vw - 60, 900)
+	local pad = 4
+	local containerPad = 20
+	local n = #buttons
+	local perTab = math.clamp((maxNav - containerPad - (n - 1) * pad) / n, 48, 100)
+	for _, b in ipairs(buttons) do
+		b.Size = UDim2.new(0, perTab, 0, 22)
+	end
+	local navW = n * perTab + (n - 1) * pad + containerPad
+	return math.min(navW, maxNav), buttons
 end
 
 function Acursive:CreateWindow(opts)
@@ -1023,6 +1128,9 @@ function Acursive:CreateWindow(opts)
 		local targetH = computeHeight()
 		Main.Visible = true
 		NavWrap.Visible = true
+		for _, c in pairs(DockManager.containers) do
+			if c and c.Parent then c.Visible = true end
+		end
 		tween(Main, 0.55, { Size = UDim2.new(0, self_.Size.X.Offset, 0, targetH), Position = UDim2.new(0.5, 0, 0, 60) }, Enum.EasingStyle.Quart)
 		tween(NavWrap, 0.55, { Position = UDim2.new(0.5, 0, 0, 14), BackgroundTransparency = 0 }, Enum.EasingStyle.Quart)
 		tween(NavStroke, 0.55, { Transparency = 0 })
@@ -1044,6 +1152,9 @@ function Acursive:CreateWindow(opts)
 		tween(NavStroke, 0.4, { Transparency = 1 })
 		tween(NavShadow, 0.4, { Transparency = 1 })
 		TabIndicator.Visible = false
+		for _, c in pairs(DockManager.containers) do
+			if c and c.Parent then c.Visible = false end
+		end
 	end
 
 	function self_:Toggle()
@@ -1058,10 +1169,9 @@ function Acursive:CreateWindow(opts)
 	function self_:IsVisible() return self_.Visible end
 
 	function self_:SelectTab(name)
-		if not self_.Tabs[name] or self_.CurrentTab == name then return end
+		if not self_.Tabs[name] then return end
 		local tabObj = self_.TabObjects[name]
 		if tabObj and DockManager:isDocked(tabObj) then
-			local btn = self_.Tabs[name]
 			for n, b in pairs(self_.Tabs) do
 				if n == name then
 					tween(b, 0.2, { TextColor3 = Accent })
@@ -1069,15 +1179,17 @@ function Acursive:CreateWindow(opts)
 					tween(b, 0.2, { TextColor3 = Palette.Muted })
 				end
 			end
+			local btn = self_.Tabs[name]
 			TabIndicator.Visible = true
 			local relX = btn.AbsolutePosition.X - NavWrap.AbsolutePosition.X + btn.AbsoluteSize.X / 2
-			tween(TabIndicator, 0.3, {
+			tween(TabIndicator, 0.25, {
 				Position = UDim2.new(0, relX, 1, -2),
 				Size = UDim2.new(0, btn.AbsoluteSize.X - 14, 0, 2),
 			}, Enum.EasingStyle.Quart)
 			self_.CurrentTab = name
 			return
 		end
+		if self_.CurrentTab == name then return end
 		for n, p in pairs(self_.Pages) do
 			local tObj = self_.TabObjects[n]
 			if not (tObj and DockManager:isDocked(tObj)) then
@@ -1095,7 +1207,7 @@ function Acursive:CreateWindow(opts)
 		local btn = self_.Tabs[name]
 		TabIndicator.Visible = true
 		local relX = btn.AbsolutePosition.X - NavWrap.AbsolutePosition.X + btn.AbsoluteSize.X / 2
-		tween(TabIndicator, 0.3, {
+		tween(TabIndicator, 0.25, {
 			Position = UDim2.new(0, relX, 1, -2),
 			Size = UDim2.new(0, btn.AbsoluteSize.X - 14, 0, 2),
 		}, Enum.EasingStyle.Quart)
@@ -1153,6 +1265,7 @@ function Acursive:CreateWindow(opts)
 		btn.Font = Enum.Font.GothamMedium
 		btn.AutoButtonColor = false
 		btn.LayoutOrder = orderNum
+		btn.TextTruncate = Enum.TextTruncate.AtEnd
 		btn.Parent = TabContainer
 		self_.Tabs[name] = btn
 
@@ -1179,22 +1292,21 @@ function Acursive:CreateWindow(opts)
 		self_.TabObjects[name] = tab
 
 		local lastClick = 0
-		local pendingSingle = nil
 		track(btn.MouseButton1Click:Connect(function()
 			local now = tick()
-			if now - lastClick < 0.35 then
-				if pendingSingle then task.cancel(pendingSingle) pendingSingle = nil end
+			if now - lastClick < 0.3 then
 				lastClick = 0
 				DockManager:toggle(tab)
 			else
 				lastClick = now
-				pendingSingle = task.delay(0.35, function()
-					pendingSingle = nil
-					if DockManager:isDocked(tab) then return end
-					self_:SelectTab(name)
-				end)
+				self_:SelectTab(name)
 			end
 		end))
+
+		local navW = computeNavWidth(self_)
+		if navW then
+			NavWrap.Size = UDim2.new(0, navW, 0, 30)
+		end
 
 		return tab
 	end
@@ -1224,6 +1336,19 @@ function Acursive:CreateWindow(opts)
 			end
 		end))
 	end
+
+	track(UserInputService.InputChanged:Connect(function()
+		local navW = computeNavWidth(self_)
+		if navW then
+			NavWrap.Size = UDim2.new(0, navW, 0, 30)
+			if self_.CurrentTab and self_.Tabs[self_.CurrentTab] then
+				local t = self_.Tabs[self_.CurrentTab]
+				local relX = t.AbsolutePosition.X - NavWrap.AbsolutePosition.X + t.AbsoluteSize.X / 2
+				TabIndicator.Position = UDim2.new(0, relX, 1, -2)
+				TabIndicator.Size = UDim2.new(0, t.AbsoluteSize.X - 14, 0, 2)
+			end
+		end
+	end))
 
 	table.insert(trackedWindows, self_)
 
@@ -1392,10 +1517,12 @@ function TabClass:CreateSection(title, order)
 		local defaultKey = opts.Keybind or opts.DefaultKey
 		local noSave = opts.Save == false
 		local onDoubleClick = opts.OnDoubleClick
+		local transparent = onDoubleClick ~= nil
 
 		local row = Instance.new("TextButton")
 		row.Size = UDim2.new(1, 0, 0, 22)
 		row.BackgroundColor3 = Palette.Row
+		row.BackgroundTransparency = transparent and 1 or 0
 		row.BorderSizePixel = 0
 		row.Text = ""
 		row.AutoButtonColor = false
@@ -1409,7 +1536,7 @@ function TabClass:CreateSection(title, order)
 		local rowShadow = Instance.new("UIStroke")
 		rowShadow.Color = Palette.Shadow
 		rowShadow.Thickness = 1
-		rowShadow.Transparency = 0.5
+		rowShadow.Transparency = transparent and 1 or 0.5
 		rowShadow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		rowShadow.Parent = row
 
@@ -1456,6 +1583,7 @@ function TabClass:CreateSection(title, order)
 		keyBtn.Size = UDim2.new(0, 55, 0, 14)
 		keyBtn.Position = UDim2.new(1, -120, 0.5, -7)
 		keyBtn.BackgroundColor3 = Palette.Input
+		keyBtn.BackgroundTransparency = transparent and 1 or 0
 		keyBtn.BorderSizePixel = 0
 		keyBtn.Text = "bind"
 		keyBtn.TextColor3 = Palette.Muted
@@ -1472,6 +1600,7 @@ function TabClass:CreateSection(title, order)
 		local kbStroke = Instance.new("UIStroke")
 		kbStroke.Color = Palette.Outline
 		kbStroke.Thickness = 1
+		kbStroke.Transparency = transparent and 1 or 0
 		kbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		kbStroke.Parent = keyBtn
 
@@ -1508,12 +1637,14 @@ function TabClass:CreateSection(title, order)
 			keyBtn.Text = tostring(defaultKey):gsub("Enum.KeyCode.", "")
 		end
 
-		track(row.MouseEnter:Connect(function()
-			tween(row, 0.15, { BackgroundColor3 = Palette.RowHover })
-		end))
-		track(row.MouseLeave:Connect(function()
-			tween(row, 0.15, { BackgroundColor3 = Palette.Row })
-		end))
+		if not transparent then
+			track(row.MouseEnter:Connect(function()
+				tween(row, 0.15, { BackgroundColor3 = Palette.RowHover })
+			end))
+			track(row.MouseLeave:Connect(function()
+				tween(row, 0.15, { BackgroundColor3 = Palette.Row })
+			end))
+		end
 
 		if onDoubleClick then
 			local pending, lastTime = nil, 0
@@ -2050,14 +2181,13 @@ function TabClass:CreateSection(title, order)
 		local h, s, v = Color3.toHSV(current)
 		local expanded = false
 
-		local PICKER_W = 200
+		local HEAD_H = 26
+		local BODY_PAD = 10
 		local SQUARE_H = 130
 		local HUE_H = 14
 		local HEX_H = 22
-		local BODY_PAD = 10
 		local SPACING = 6
 		local BODY_H = BODY_PAD + SQUARE_H + SPACING + HUE_H + SPACING + HEX_H + BODY_PAD
-		local HEAD_H = 26
 		local EXPANDED_H = HEAD_H + BODY_H
 
 		local wrap = Instance.new("Frame")
@@ -2073,7 +2203,6 @@ function TabClass:CreateSection(title, order)
 		head.BorderSizePixel = 0
 		head.Text = ""
 		head.AutoButtonColor = false
-		head.ClipsDescendants = true
 		head.Parent = wrap
 
 		local headCorner = Instance.new("UICorner")
@@ -2086,12 +2215,35 @@ function TabClass:CreateSection(title, order)
 		headStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		headStroke.Parent = head
 
+		local lbl = Instance.new("TextLabel")
+		lbl.Size = UDim2.new(1, -180, 1, 0)
+		lbl.Position = UDim2.new(0, 10, 0, 0)
+		lbl.BackgroundTransparency = 1
+		lbl.Text = label
+		lbl.TextColor3 = Palette.Text
+		lbl.TextSize = 11
+		lbl.Font = Enum.Font.Gotham
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		lbl.Parent = head
+
+		local hexLbl = Instance.new("TextLabel")
+		hexLbl.AnchorPoint = Vector2.new(1, 0.5)
+		hexLbl.Size = UDim2.new(0, 100, 1, 0)
+		hexLbl.Position = UDim2.new(1, -60, 0.5, 0)
+		hexLbl.BackgroundTransparency = 1
+		hexLbl.Text = ""
+		hexLbl.TextColor3 = Palette.Muted
+		hexLbl.TextSize = 11
+		hexLbl.Font = Enum.Font.Code
+		hexLbl.TextXAlignment = Enum.TextXAlignment.Right
+		hexLbl.Parent = head
+
 		local preview = Instance.new("Frame")
+		preview.AnchorPoint = Vector2.new(1, 0.5)
 		preview.Size = UDim2.new(0, 40, 0, 16)
-		preview.Position = UDim2.new(1, -48, 0.5, -8)
+		preview.Position = UDim2.new(1, -10, 0.5, 0)
 		preview.BackgroundColor3 = current
 		preview.BorderSizePixel = 0
-		preview.ZIndex = 1
 		preview.Parent = head
 
 		local pc = Instance.new("UICorner")
@@ -2103,30 +2255,6 @@ function TabClass:CreateSection(title, order)
 		ps.Thickness = 1
 		ps.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		ps.Parent = preview
-
-		local lbl = Instance.new("TextLabel")
-		lbl.Size = UDim2.new(1, -80, 1, 0)
-		lbl.Position = UDim2.new(0, 10, 0, 0)
-		lbl.BackgroundTransparency = 1
-		lbl.Text = label
-		lbl.TextColor3 = Palette.Text
-		lbl.TextSize = 11
-		lbl.Font = Enum.Font.Gotham
-		lbl.TextXAlignment = Enum.TextXAlignment.Left
-		lbl.ZIndex = 3
-		lbl.Parent = head
-
-		local hexLbl = Instance.new("TextLabel")
-		hexLbl.Size = UDim2.new(0, 90, 1, 0)
-		hexLbl.Position = UDim2.new(1, -100, 0, 0)
-		hexLbl.BackgroundTransparency = 1
-		hexLbl.Text = string.format("#%02X%02X%02X", math.floor(current.R * 255), math.floor(current.G * 255), math.floor(current.B * 255))
-		hexLbl.TextColor3 = Palette.Text
-		hexLbl.TextSize = 11
-		hexLbl.Font = Enum.Font.Code
-		hexLbl.TextXAlignment = Enum.TextXAlignment.Right
-		hexLbl.ZIndex = 3
-		hexLbl.Parent = head
 
 		local pickerBody = Instance.new("Frame")
 		pickerBody.Size = UDim2.new(1, 0, 0, BODY_H)
@@ -2145,12 +2273,12 @@ function TabClass:CreateSection(title, order)
 		pbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		pbStroke.Parent = pickerBody
 
-		local squareW = PICKER_W - BODY_PAD * 2
 		local satSquare = Instance.new("Frame")
-		satSquare.Size = UDim2.new(0, squareW, 0, SQUARE_H)
+		satSquare.Size = UDim2.new(1, -BODY_PAD * 2, 0, SQUARE_H)
 		satSquare.Position = UDim2.new(0, BODY_PAD, 0, BODY_PAD)
 		satSquare.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
 		satSquare.BorderSizePixel = 0
+		satSquare.Active = true
 		satSquare.Parent = pickerBody
 
 		local sqCorner = Instance.new("UICorner")
@@ -2215,10 +2343,11 @@ function TabClass:CreateSection(title, order)
 		scInner.Parent = satCursor
 
 		local hueSlider = Instance.new("Frame")
-		hueSlider.Size = UDim2.new(0, squareW, 0, HUE_H)
+		hueSlider.Size = UDim2.new(1, -BODY_PAD * 2, 0, HUE_H)
 		hueSlider.Position = UDim2.new(0, BODY_PAD, 0, BODY_PAD + SQUARE_H + SPACING)
 		hueSlider.BackgroundColor3 = Color3.new(1, 1, 1)
 		hueSlider.BorderSizePixel = 0
+		hueSlider.Active = true
 		hueSlider.Parent = pickerBody
 
 		local hsCorner = Instance.new("UICorner")
@@ -2260,7 +2389,7 @@ function TabClass:CreateSection(title, order)
 		hcInner.Parent = hueCursor
 
 		local hexBox = Instance.new("TextBox")
-		hexBox.Size = UDim2.new(0, squareW, 0, HEX_H)
+		hexBox.Size = UDim2.new(1, -BODY_PAD * 2, 0, HEX_H)
 		hexBox.Position = UDim2.new(0, BODY_PAD, 0, BODY_PAD + SQUARE_H + SPACING + HUE_H + SPACING)
 		hexBox.BackgroundColor3 = Palette.Input
 		hexBox.BorderSizePixel = 0
@@ -2430,19 +2559,6 @@ function TabClass:CreateSection(title, order)
 			local target = expanded and UDim2.new(1, 0, 0, EXPANDED_H) or UDim2.new(1, 0, 0, HEAD_H)
 			tween(wrap, 0.28, { Size = target }, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 			tween(headStroke, 0.2, { Color = expanded and Accent or Palette.Outline })
-			if expanded then
-				tween(preview, 0.28, {
-					Size = UDim2.new(1, 0, 1, 0),
-					Position = UDim2.new(0, 0, 0, 0),
-				}, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-				tween(ps, 0.2, { Transparency = 1 })
-			else
-				tween(preview, 0.28, {
-					Size = UDim2.new(0, 40, 0, 16),
-					Position = UDim2.new(1, -48, 0.5, -8),
-				}, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-				tween(ps, 0.2, { Transparency = 0 })
-			end
 		end
 
 		track(head.MouseButton1Click:Connect(toggleExpand))
