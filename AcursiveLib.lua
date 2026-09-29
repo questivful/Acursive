@@ -38,7 +38,7 @@ local Palette = {
 
 Acursive.Themes = THEMES
 Acursive.Palette = Palette
-Acursive.Version = "1.3.0"
+Acursive.Version = "1.4.0"
 
 local Accent = THEMES.Orange.primary
 local AccentLight = THEMES.Orange.light
@@ -52,6 +52,9 @@ local keyCapture = nil
 local trackedConnections = {}
 local trackedThreads = {}
 local trackedWindows = {}
+local screenGui
+local notifContainer
+local notifCounter = 0
 
 local function track(conn)
 	if conn then table.insert(trackedConnections, conn) end
@@ -66,19 +69,8 @@ end
 local function safeCall(fn, ...)
 	if type(fn) ~= "function" then return false end
 	local ok, err = pcall(fn, ...)
-	if not ok then
-		warn("[Acursive] callback error: " .. tostring(err))
-	end
+	if not ok then warn("[Acursive] callback error: " .. tostring(err)) end
 	return ok
-end
-
-local function safeExec(fn, ...)
-	local ok, res = pcall(fn, ...)
-	if not ok then
-		warn("[Acursive] exec error: " .. tostring(res))
-		return nil
-	end
-	return res
 end
 
 local function isTyping()
@@ -147,36 +139,6 @@ function Acursive:SetRGB(enabled)
 	RGBMode = enabled and true or false
 end
 
-function Acursive:MemoryLeakCheck()
-	local stale = 0
-	for i = #trackedConnections, 1, -1 do
-		local c = trackedConnections[i]
-		if typeof(c) ~= "RBXScriptConnection" or not c.Connected then
-			table.remove(trackedConnections, i)
-			stale = stale + 1
-		end
-	end
-	local deadWindows = 0
-	for i = #trackedWindows, 1, -1 do
-		local w = trackedWindows[i]
-		if not w or not w.Main or not w.Main.Parent then
-			table.remove(trackedWindows, i)
-			deadWindows = deadWindows + 1
-		end
-	end
-	return {
-		LiveConnections = #trackedConnections,
-		StaleConnectionsRemoved = stale,
-		Threads = #trackedThreads,
-		AccentTargets = #accentTargets,
-		AccentGradients = #accentGradients,
-		Keybinds = #activeKeybinds,
-		Windows = #trackedWindows,
-		DeadWindowsRemoved = deadWindows,
-		ScreenGuiAlive = screenGui ~= nil and screenGui.Parent ~= nil,
-	}
-end
-
 function Acursive:Cleanup()
 	for _, c in ipairs(trackedConnections) do
 		pcall(function() if typeof(c) == "RBXScriptConnection" and c.Connected then c:Disconnect() end end)
@@ -197,9 +159,7 @@ function Acursive:Cleanup()
 	notifCounter = 0
 end
 
-function Acursive:Destroy()
-	self:Cleanup()
-end
+function Acursive:Destroy() self:Cleanup() end
 
 track(UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
@@ -232,8 +192,6 @@ track(RunService.Heartbeat:Connect(function(dt)
 	end
 end))
 
-local screenGui
-
 local function getScreenGui()
 	if screenGui and screenGui.Parent then return screenGui end
 	local sg = Instance.new("ScreenGui")
@@ -248,15 +206,10 @@ local function getScreenGui()
 			parented = true
 		end
 	end)
-	if not parented then
-		sg.Parent = LocalPlayer:WaitForChild("PlayerGui")
-	end
+	if not parented then sg.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 	screenGui = sg
 	return sg
 end
-
-local notifContainer
-local notifCounter = 0
 
 local function getNotifContainer()
 	if notifContainer and notifContainer.Parent then return notifContainer end
@@ -268,7 +221,6 @@ local function getNotifContainer()
 	c.Size = UDim2.new(0, 240, 0, 0)
 	c.AutomaticSize = Enum.AutomaticSize.Y
 	c.BackgroundTransparency = 1
-	c.ClipsDescendants = false
 	c.Parent = sg
 	local l = Instance.new("UIListLayout")
 	l.Padding = UDim.new(0, 6)
@@ -396,122 +348,82 @@ SectionClass.__index = SectionClass
 local TabClass = {}
 TabClass.__index = TabClass
 
-local function buildViewportCharacter(viewport)
-	for _, c in ipairs(viewport:GetChildren()) do c:Destroy() end
-	local cam = Instance.new("Camera")
-	cam.FieldOfView = 34
-	cam.Parent = viewport
-	viewport.CurrentCamera = cam
+local DockManager = {}
+DockManager.panels = {}
+DockManager.container = nil
 
-	local cloneRef = { model = nil }
-
-	local function applyChar(char)
-		if not char or not char.Parent then return end
-		if not char:IsA("Model") then return end
-		if not char:FindFirstChildOfClass("Humanoid") then return end
-		if not char:FindFirstChild("HumanoidRootPart") then return end
-		local ok, clone = pcall(function() return char:Clone() end)
-		if not ok or not clone or not clone:IsA("Model") then
-			if clone then pcall(function() clone:Destroy() end) end
-			return
-		end
-		for _, d in ipairs(clone:GetDescendants()) do
-			if d:IsA("BasePart") then
-				d.Anchored = true
-				d.CanCollide = false
-			elseif d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Sound") or d:IsA("ParticleEmitter") or d:IsA("Trail") then
-				d:Destroy()
-			end
-		end
-		local hum = clone:FindFirstChildOfClass("Humanoid")
-		if hum then hum.PlatformStand = true end
-		local hrp = clone:FindFirstChild("HumanoidRootPart")
-		if hrp then clone.PrimaryPart = hrp end
-		clone.Parent = viewport
-		pcall(function() clone:PivotTo(CFrame.new(0, 0, 0)) end)
-		if cloneRef.model and cloneRef.model.Parent then
-			pcall(function() cloneRef.model:Destroy() end)
-		end
-		cloneRef.model = clone
-	end
-
-	task.spawn(function()
-		local char = LocalPlayer.Character
-		if not char then
-			char = LocalPlayer.CharacterAdded:Wait()
-		end
-		if char then
-			pcall(function()
-				char:WaitForChild("Humanoid", 5)
-				char:WaitForChild("HumanoidRootPart", 5)
-			end)
-			task.wait(0.05)
-			applyChar(char)
-		end
-	end)
-
-	track(LocalPlayer.CharacterAdded:Connect(function(char)
-		pcall(function()
-			char:WaitForChild("Humanoid", 5)
-			char:WaitForChild("HumanoidRootPart", 5)
-		end)
-		task.wait(0.1)
-		applyChar(char)
-	end))
-
-	local radius = 5.6
-	local height = 1.6
-	local angle = 0
-	track(RunService.RenderStepped:Connect(function(dt)
-		if not cam.Parent then return end
-		angle = (angle + dt * 0.55) % (math.pi * 2)
-		local x = math.sin(angle) * radius
-		local z = math.cos(angle) * radius
-		cam.CFrame = CFrame.new(Vector3.new(x, height, z), Vector3.new(0, 0.9, 0))
-	end))
-
-	return cam, cloneRef
+function DockManager:getContainer()
+	if self.container and self.container.Parent then return self.container end
+	local sg = getScreenGui()
+	local c = Instance.new("Frame")
+	c.Name = "AcursiveDockRoot"
+	c.AnchorPoint = Vector2.new(1, 0)
+	c.Position = UDim2.new(1, -14, 0, 14)
+	c.Size = UDim2.new(0, 300, 1, -28)
+	c.BackgroundTransparency = 1
+	c.ClipsDescendants = false
+	c.ZIndex = 15
+	c.Parent = sg
+	local l = Instance.new("UIListLayout")
+	l.SortOrder = Enum.SortOrder.LayoutOrder
+	l.Padding = UDim.new(0, 10)
+	l.VerticalAlignment = Enum.VerticalAlignment.Top
+	l.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	l.Parent = c
+	self.container = c
+	return c
 end
 
-local function createProfilePanel(window)
-	local NavWrap = window.NavWrap
-	if not NavWrap or not NavWrap.Parent then return nil end
+function DockManager:isDocked(tab)
+	for _, d in ipairs(self.panels) do
+		if d.tab == tab then return true end
+	end
+	return false
+end
+
+function DockManager:getPanel(tab)
+	for _, d in ipairs(self.panels) do
+		if d.tab == tab then return d end
+	end
+	return nil
+end
+
+function DockManager:dock(tab)
+	if self:isDocked(tab) then return end
+	local container = self:getContainer()
 
 	local panel = Instance.new("Frame")
-	panel.Name = "ProfilePanel"
-	panel.AnchorPoint = Vector2.new(0, 0)
-	panel.Position = UDim2.new(0, 4, 1, 6)
-	panel.Size = UDim2.new(0, 340, 0, 0)
+	panel.Name = "Dock_" .. tab.Name
+	panel.Size = UDim2.new(1, 0, 0, 320)
 	panel.BackgroundColor3 = Palette.Panel
 	panel.BorderSizePixel = 0
-	panel.ClipsDescendants = true
-	panel.ZIndex = 20
-	panel.Visible = false
-	panel.Parent = NavWrap
+	panel.LayoutOrder = #self.panels + 1
+	panel.ZIndex = 16
+	panel.Parent = container
 
-	local pCorner = Instance.new("UICorner")
-	pCorner.CornerRadius = UDim.new(0, 3)
-	pCorner.Parent = panel
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 3)
+	corner.Parent = panel
 
-	local pStroke = Instance.new("UIStroke")
-	pStroke.Color = Palette.Outline
-	pStroke.Thickness = 1
-	pStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	pStroke.Parent = panel
+	local outline = Instance.new("UIStroke")
+	outline.Color = Palette.Outline
+	outline.Thickness = 1
+	outline.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	outline.Parent = panel
 
-	local pShadow = Instance.new("UIStroke")
-	pShadow.Color = Palette.Shadow
-	pShadow.Thickness = 1
-	pShadow.Transparency = 0.25
-	pShadow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	pShadow.Parent = panel
+	local shadow = Instance.new("UIStroke")
+	shadow.Color = Palette.Shadow
+	shadow.Thickness = 1
+	shadow.Transparency = 0.25
+	shadow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	shadow.Parent = panel
 
 	local header = Instance.new("Frame")
 	header.Size = UDim2.new(1, 0, 0, 26)
 	header.BackgroundColor3 = Palette.Dark
 	header.BackgroundTransparency = 0.35
 	header.BorderSizePixel = 0
-	header.ZIndex = 21
+	header.ZIndex = 17
 	header.Parent = panel
 
 	local hCorner = Instance.new("UICorner")
@@ -519,36 +431,223 @@ local function createProfilePanel(window)
 	hCorner.Parent = header
 
 	local hTitle = Instance.new("TextLabel")
-	hTitle.Size = UDim2.new(1, -40, 1, 0)
+	hTitle.Size = UDim2.new(1, -60, 1, 0)
 	hTitle.Position = UDim2.new(0, 12, 0, 0)
 	hTitle.BackgroundTransparency = 1
-	hTitle.Text = "PROFILE"
+	hTitle.Text = string.upper(tab.Name)
 	hTitle.TextColor3 = Palette.Text
 	hTitle.TextSize = 11
 	hTitle.Font = Enum.Font.GothamBold
 	hTitle.TextXAlignment = Enum.TextXAlignment.Left
-	hTitle.ZIndex = 22
+	hTitle.ZIndex = 18
 	hTitle.Parent = header
 
-	local dot = Instance.new("Frame")
-	dot.Size = UDim2.new(0, 5, 0, 5)
-	dot.Position = UDim2.new(0, 4, 0.5, -2.5)
-	dot.BackgroundColor3 = Accent
-	dot.BorderSizePixel = 0
-	dot.ZIndex = 22
-	dot.Parent = header
-	registerAccent(dot)
-	local dotCorner = Instance.new("UICorner")
-	dotCorner.CornerRadius = UDim.new(1, 0)
-	dotCorner.Parent = dot
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Size = UDim2.new(0, 18, 0, 18)
+	closeBtn.Position = UDim2.new(1, -22, 0.5, -9)
+	closeBtn.BackgroundColor3 = Palette.Row
+	closeBtn.BorderSizePixel = 0
+	closeBtn.Text = "×"
+	closeBtn.TextColor3 = Palette.Muted
+	closeBtn.TextSize = 14
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.AutoButtonColor = false
+	closeBtn.ZIndex = 18
+	closeBtn.Parent = header
 
+	local cbCorner = Instance.new("UICorner")
+	cbCorner.CornerRadius = UDim.new(0, 2)
+	cbCorner.Parent = closeBtn
+
+	local contentWrap = Instance.new("Frame")
+	contentWrap.Size = UDim2.new(1, -8, 1, -34)
+	contentWrap.Position = UDim2.new(0, 4, 0, 30)
+	contentWrap.BackgroundTransparency = 1
+	contentWrap.ClipsDescendants = true
+	contentWrap.ZIndex = 17
+	contentWrap.Parent = panel
+
+	tab.Page.Parent = contentWrap
+	tab.Page.Size = UDim2.new(1, 0, 1, 0)
+	tab.Page.Visible = true
+	tab.Page.ZIndex = 18
+
+	tab.Docked = true
+
+	track(closeBtn.MouseEnter:Connect(function()
+		tween(closeBtn, 0.15, { BackgroundColor3 = Palette.RowHover, TextColor3 = Accent })
+	end))
+	track(closeBtn.MouseLeave:Connect(function()
+		tween(closeBtn, 0.15, { BackgroundColor3 = Palette.Row, TextColor3 = Palette.Muted })
+	end))
+	track(closeBtn.MouseButton1Click:Connect(function()
+		DockManager:undock(tab)
+	end))
+
+	table.insert(self.panels, { tab = tab, panel = panel, content = contentWrap })
+	panel.Size = UDim2.new(1, 0, 0, 0)
+	tween(panel, 0.3, { Size = UDim2.new(1, 0, 0, 320) }, Enum.EasingStyle.Quart)
+end
+
+function DockManager:undock(tab)
+	for i, d in ipairs(self.panels) do
+		if d.tab == tab then
+			tab.Page.Parent = tab.Window.Content
+			tab.Page.Size = UDim2.new(1, 0, 1, 0)
+			tab.Page.Visible = (tab.Window.CurrentTab == tab.Name)
+			tab.Docked = false
+			local p = d.panel
+			table.remove(self.panels, i)
+			tween(p, 0.25, { Size = UDim2.new(1, 0, 0, 0) }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+			trackThread(task.delay(0.3, function()
+				if p and p.Parent then p:Destroy() end
+			end))
+			for j, dd in ipairs(self.panels) do
+				dd.panel.LayoutOrder = j
+			end
+			if tab.Window then tab.Window:Resize(false) end
+			return
+		end
+	end
+end
+
+function DockManager:toggle(tab)
+	if self:isDocked(tab) then
+		self:undock(tab)
+	else
+		self:dock(tab)
+	end
+end
+
+function DockManager:clearAll()
+	for _, d in ipairs(self.panels) do
+		pcall(function()
+			d.tab.Page.Parent = d.tab.Window.Content
+			d.tab.Page.Size = UDim2.new(1, 0, 1, 0)
+			d.tab.Docked = false
+			d.panel:Destroy()
+		end)
+	end
+	table.clear(self.panels)
+	if self.container then pcall(function() self.container:Destroy() end) end
+	self.container = nil
+end
+
+local function buildViewportCharacter(viewport)
+	for _, c in ipairs(viewport:GetChildren()) do c:Destroy() end
+
+	local worldModel = Instance.new("WorldModel")
+	worldModel.Parent = viewport
+
+	local cam = Instance.new("Camera")
+	cam.FieldOfView = 30
+	cam.CFrame = CFrame.new(Vector3.new(0, 1.5, 5), Vector3.new(0, 1, 0))
+	cam.Parent = viewport
+	viewport.CurrentCamera = cam
+
+	local currentModel = nil
+	local radius = 5.0
+	local height = 1.5
+	local angle = 0
+
+	local function clearModel()
+		if currentModel and currentModel.Parent then
+			pcall(function() currentModel:Destroy() end)
+		end
+		currentModel = nil
+	end
+
+	local function loadCharacter(char)
+		if not char or not char.Parent then return end
+		if not char:IsA("Model") then return end
+		if not char:FindFirstChildOfClass("Humanoid") then return end
+		if not char:FindFirstChild("HumanoidRootPart") then return end
+
+		pcall(function() char.Archivable = true end)
+
+		local ok, clone = pcall(function() return char:Clone() end)
+		if not ok or not clone then return end
+		if not clone:IsA("Model") then
+			pcall(function() clone:Destroy() end)
+			return
+		end
+
+		for _, d in ipairs(clone:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.Anchored = true
+				d.CanCollide = false
+			elseif d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Sound") 
+				or d:IsA("ParticleEmitter") or d:IsA("Trail") or d:IsA("Fire") 
+				or d:IsA("Smoke") or d:IsA("Sparkles") then
+				pcall(function() d:Destroy() end)
+			end
+		end
+
+		local hum = clone:FindFirstChildOfClass("Humanoid")
+		if hum then pcall(function() hum:Destroy() end) end
+
+		local anim = clone:FindFirstChild("Animate")
+		if anim then pcall(function() anim:Destroy() end) end
+
+		local hrp = clone:FindFirstChild("HumanoidRootPart")
+		if hrp then clone.PrimaryPart = hrp end
+
+		clone.Parent = worldModel
+
+		local pivot = hrp or clone:FindFirstChildWhichIsA("BasePart", true)
+		if pivot then pcall(function() clone:PivotTo(CFrame.new(0, 0, 0)) end) end
+
+		clearModel()
+		currentModel = clone
+	end
+
+	task.spawn(function()
+		local char = LocalPlayer.Character
+		if not char then
+			local conn
+			conn = LocalPlayer.CharacterAdded:Connect(function(c) char = c end)
+			local timeout = tick() + 10
+			while not char and tick() < timeout do task.wait(0.1) end
+			if conn then conn:Disconnect() end
+		end
+		if char then
+			pcall(function()
+				char:WaitForChild("Humanoid", 5)
+				char:WaitForChild("HumanoidRootPart", 5)
+			end)
+			task.wait(0.2)
+			loadCharacter(char)
+		end
+	end)
+
+	track(LocalPlayer.CharacterAdded:Connect(function(char)
+		task.wait(0.2)
+		pcall(function()
+			char:WaitForChild("Humanoid", 5)
+			char:WaitForChild("HumanoidRootPart", 5)
+		end)
+		task.wait(0.1)
+		loadCharacter(char)
+	end))
+
+	track(RunService.RenderStepped:Connect(function(dt)
+		if not cam.Parent then return end
+		angle = (angle + dt * 0.5) % (math.pi * 2)
+		local x = math.sin(angle) * radius
+		local z = math.cos(angle) * radius
+		cam.CFrame = CFrame.new(Vector3.new(x, height, z), Vector3.new(0, 1, 0))
+	end))
+
+	return cam
+end
+
+local function buildProfilePage(page, window)
 	local viewWrap = Instance.new("Frame")
-	viewWrap.Size = UDim2.new(0, 130, 0, 190)
-	viewWrap.Position = UDim2.new(0, 10, 0, 34)
+	viewWrap.Size = UDim2.new(1, 0, 0, 220)
 	viewWrap.BackgroundColor3 = Palette.Dark
 	viewWrap.BorderSizePixel = 0
-	viewWrap.ZIndex = 21
-	viewWrap.Parent = panel
+	viewWrap.LayoutOrder = 1
+	viewWrap.Parent = page
 
 	local vwCorner = Instance.new("UICorner")
 	vwCorner.CornerRadius = UDim.new(0, 3)
@@ -563,247 +662,108 @@ local function createProfilePanel(window)
 	local viewport = Instance.new("ViewportFrame")
 	viewport.Size = UDim2.new(1, 0, 1, 0)
 	viewport.BackgroundTransparency = 1
-	viewport.Ambient = Color3.fromRGB(160, 160, 160)
+	viewport.Ambient = Color3.fromRGB(170, 170, 170)
 	viewport.LightColor = Color3.fromRGB(255, 255, 255)
 	viewport.LightDirection = Vector3.new(-0.4, -1, -0.6)
-	viewport.ZIndex = 22
 	viewport.Parent = viewWrap
 
-	local bottomLabel = Instance.new("Frame")
-	bottomLabel.Size = UDim2.new(1, 0, 0, 24)
-	bottomLabel.Position = UDim2.new(0, 0, 1, -24)
-	bottomLabel.BackgroundColor3 = Palette.Dark
-	bottomLabel.BackgroundTransparency = 0.25
-	bottomLabel.BorderSizePixel = 0
-	bottomLabel.ZIndex = 23
-	bottomLabel.Parent = viewWrap
-
-	local blCorner = Instance.new("UICorner")
-	blCorner.CornerRadius = UDim.new(0, 3)
-	blCorner.Parent = bottomLabel
-
-	local blText = Instance.new("TextLabel")
-	blText.Size = UDim2.new(1, -12, 1, 0)
-	blText.Position = UDim2.new(0, 6, 0, 0)
-	blText.BackgroundTransparency = 1
-	blText.Text = "LIVE PREVIEW"
-	blText.TextColor3 = Accent
-	blText.TextSize = 9
-	blText.Font = Enum.Font.GothamBold
-	blText.TextXAlignment = Enum.TextXAlignment.Center
-	blText.ZIndex = 24
-	blText.Parent = bottomLabel
-	registerAccent(blText, "TextColor3")
+	buildViewportCharacter(viewport)
 
 	local info = Instance.new("Frame")
-	info.Size = UDim2.new(1, -160, 1, -40)
-	info.Position = UDim2.new(0, 150, 0, 34)
+	info.Size = UDim2.new(1, 0, 0, 0)
+	info.AutomaticSize = Enum.AutomaticSize.Y
 	info.BackgroundTransparency = 1
-	info.ZIndex = 21
-	info.Parent = panel
+	info.LayoutOrder = 2
+	info.Parent = page
 
 	local iLayout = Instance.new("UIListLayout")
 	iLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	iLayout.Padding = UDim.new(0, 3)
+	iLayout.Padding = UDim.new(0, 4)
 	iLayout.Parent = info
 
-	local function row(order, label, value, accent)
+	local function makeRow(order, label, value, accent)
 		local r = Instance.new("Frame")
-		r.Size = UDim2.new(1, 0, 0, 20)
-		r.BackgroundTransparency = 1
+		r.Size = UDim2.new(1, 0, 0, 22)
+		r.BackgroundColor3 = Palette.Row
+		r.BorderSizePixel = 0
 		r.LayoutOrder = order
-		r.ZIndex = 22
 		r.Parent = info
 
+		local rc = Instance.new("UICorner")
+		rc.CornerRadius = UDim.new(0, 2)
+		rc.Parent = r
+
 		local k = Instance.new("TextLabel")
-		k.Size = UDim2.new(0, 76, 1, 0)
+		k.Size = UDim2.new(0, 120, 1, 0)
+		k.Position = UDim2.new(0, 10, 0, 0)
 		k.BackgroundTransparency = 1
 		k.Text = label
 		k.TextColor3 = Palette.Muted
-		k.TextSize = 10
+		k.TextSize = 11
 		k.Font = Enum.Font.Gotham
 		k.TextXAlignment = Enum.TextXAlignment.Left
-		k.ZIndex = 23
 		k.Parent = r
 
 		local v = Instance.new("TextLabel")
-		v.Size = UDim2.new(1, -80, 1, 0)
-		v.Position = UDim2.new(0, 80, 0, 0)
+		v.Size = UDim2.new(1, -140, 1, 0)
+		v.Position = UDim2.new(0, 130, 0, 0)
 		v.BackgroundTransparency = 1
 		v.Text = tostring(value)
 		v.TextColor3 = accent and Accent or Palette.Text
-		v.TextSize = 10
+		v.TextSize = 11
 		v.Font = Enum.Font.GothamMedium
 		v.TextXAlignment = Enum.TextXAlignment.Left
 		v.TextTruncate = Enum.TextTruncate.AtEnd
-		v.ZIndex = 23
 		v.Parent = r
 		if accent then registerAccent(v, "TextColor3") end
 		return v
 	end
 
-	local rDisplay = row(1, "Display", LocalPlayer.DisplayName or LocalPlayer.Name, true)
-	local rUser = row(2, "Username", "@" .. LocalPlayer.Name)
-	local rId = row(3, "User ID", tostring(LocalPlayer.UserId))
-	local rAge = row(4, "Account Age", tostring(LocalPlayer.AccountAge) .. " days")
-	local rCreated = row(5, "Created", "—")
+	makeRow(1, "Display Name", LocalPlayer.DisplayName or LocalPlayer.Name, true)
+	makeRow(2, "Username", "@" .. LocalPlayer.Name)
+	makeRow(3, "User ID", tostring(LocalPlayer.UserId))
+	makeRow(4, "Account Age", tostring(LocalPlayer.AccountAge) .. " days")
 
+	local createdVal = "—"
 	pcall(function()
 		local created = DateTime.fromUnixTimestamp(os.time() - (LocalPlayer.AccountAge * 86400))
-		rCreated.Text = created:FormatLocalTime("YYYY-MM-DD", "en-us")
+		createdVal = created:FormatLocalTime("YYYY-MM-DD", "en-us")
 	end)
-
-	local rShirt = row(6, "Shirt", "None")
-	local rPants = row(7, "Pants", "None")
+	makeRow(5, "Created", createdVal)
 
 	local function refreshClothing()
 		local char = LocalPlayer.Character
 		if not char then return end
 		local s = char:FindFirstChildOfClass("Shirt")
 		local p = char:FindFirstChildOfClass("Pants")
-		rShirt.Text = s and "Equipped" or "None"
-		rPants.Text = p and "Equipped" or "None"
-		pcall(function()
-			local shirtT = s and s.ShirtTemplate or nil
-			if shirtT and #shirtT > 0 then rShirt.Text = "Loaded" end
-		end)
-	end
-	refreshClothing()
-	track(LocalPlayer.CharacterAdded:Connect(refreshClothing))
-
-	local divider = Instance.new("Frame")
-	divider.Size = UDim2.new(1, 0, 0, 1)
-	divider.BackgroundColor3 = Palette.Outline
-	divider.BorderSizePixel = 0
-	divider.LayoutOrder = 0
-	divider.ZIndex = 22
-	divider.Parent = info
-
-	local avatarBtn = Instance.new("TextButton")
-	avatarBtn.Size = UDim2.new(0, 22, 0, 22)
-	avatarBtn.Position = UDim2.new(0, 6, 0.5, -11)
-	avatarBtn.BackgroundColor3 = Palette.Dark
-	avatarBtn.BackgroundTransparency = 0.2
-	avatarBtn.BorderSizePixel = 0
-	avatarBtn.Text = ""
-	avatarBtn.AutoButtonColor = false
-	avatarBtn.ZIndex = 3
-	avatarBtn.Parent = NavWrap
-
-	local avCorner = Instance.new("UICorner")
-	avCorner.CornerRadius = UDim.new(1, 0)
-	avCorner.Parent = avatarBtn
-
-	local avStroke = Instance.new("UIStroke")
-	avStroke.Color = Palette.Outline
-	avStroke.Thickness = 1
-	avStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	avStroke.Parent = avatarBtn
-
-	local avImage = Instance.new("ImageLabel")
-	avImage.Size = UDim2.new(1, 0, 1, 0)
-	avImage.BackgroundTransparency = 1
-	avImage.Image = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(LocalPlayer.UserId) .. "&w=150&h=150"
-	avImage.ZIndex = 4
-	avImage.Parent = avatarBtn
-
-	local avImgCorner = Instance.new("UICorner")
-	avImgCorner.CornerRadius = UDim.new(1, 0)
-	avImgCorner.Parent = avImage
-
-	pcall(function()
-		local thumb, ok = Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
-		if ok and thumb then avImage.Image = thumb end
-	end)
-
-	local circle = Instance.new("Frame")
-	circle.Size = UDim2.new(0, 6, 0, 6)
-	circle.Position = UDim2.new(1, -7, 1, -7)
-	circle.BackgroundColor3 = Color3.fromRGB(60, 200, 100)
-	circle.BorderSizePixel = 0
-	circle.ZIndex = 5
-	circle.Parent = avatarBtn
-
-	local cCorner = Instance.new("UICorner")
-	cCorner.CornerRadius = UDim.new(1, 0)
-	cCorner.Parent = circle
-
-	local cStroke = Instance.new("UIStroke")
-	cStroke.Color = Palette.Panel
-	cStroke.Thickness = 1
-	cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	cStroke.Parent = circle
-
-	local opened = false
-	local cam, charRef = nil, nil
-
-	local function open()
-		if opened then return end
-		opened = true
-		panel.Visible = true
-		if not cam or not cam.Parent then
-			cam, charRef = buildViewportCharacter(viewport)
+		local shirt = s and "Equipped" or "None"
+		local pants = p and "Equipped" or "None"
+		if s then
+			pcall(function()
+				if s.ShirtTemplate and #s.ShirtTemplate > 0 then shirt = "Loaded" end
+			end)
 		end
-		tween(avStroke, 0.2, { Color = Accent })
-		tween(panel, 0.32, { Size = UDim2.new(0, 340, 0, 234) }, Enum.EasingStyle.Quart)
-	end
-
-	local function close()
-		if not opened then return end
-		opened = false
-		tween(avStroke, 0.2, { Color = Palette.Outline })
-		tween(panel, 0.26, { Size = UDim2.new(0, 340, 0, 0) }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-		trackThread(task.delay(0.3, function()
-			if not opened and panel and panel.Parent then panel.Visible = false end
-		end))
-	end
-
-	local function toggle()
-		if opened then close() else open() end
-	end
-
-	track(avatarBtn.MouseButton1Click:Connect(toggle))
-	track(avatarBtn.MouseEnter:Connect(function()
-		tween(avatarBtn, 0.15, { BackgroundColor3 = Palette.RowHover })
-	end))
-	track(avatarBtn.MouseLeave:Connect(function()
-		tween(avatarBtn, 0.15, { BackgroundColor3 = Palette.Dark })
-	end))
-
-	track(UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then return end
-		if not opened then return end
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			local mp = UserInputService:GetMouseLocation()
-			local abs = panel.AbsolutePosition
-			local size = panel.AbsoluteSize
-			local avAbs = avatarBtn.AbsolutePosition
-			local avSize = avatarBtn.AbsoluteSize
-			local insidePanel = mp.X >= abs.X and mp.X <= abs.X + size.X and mp.Y >= abs.Y and mp.Y <= abs.Y + size.Y
-			local insideBtn = mp.X >= avAbs.X and mp.X <= avAbs.X + avSize.X and mp.Y >= avAbs.Y and mp.Y <= avAbs.Y + avSize.Y
-			if not insidePanel and not insideBtn then close() end
+		if p then
+			pcall(function()
+				if p.PantsTemplate and #p.PantsTemplate > 0 then pants = "Loaded" end
+			end)
 		end
-	end))
+		return shirt, pants
+	end
 
-	track(UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then return end
-		if input.KeyCode == Enum.KeyCode.Escape and opened then close() end
-	end))
+	local shirtRow = makeRow(6, "Shirt", "None")
+	local pantsRow = makeRow(7, "Pants", "None")
 
-	return {
-		Open = open,
-		Close = close,
-		Toggle = toggle,
-		IsOpen = function() return opened end,
-		Frame = panel,
-		Refresh = function()
-			rDisplay.Text = LocalPlayer.DisplayName or LocalPlayer.Name
-			rUser.Text = "@" .. LocalPlayer.Name
-			rId.Text = tostring(LocalPlayer.UserId)
-			rAge.Text = tostring(LocalPlayer.AccountAge) .. " days"
-			refreshClothing()
-		end,
-	}
+	local function updateClothing()
+		local s, p = refreshClothing()
+		if s then shirtRow.Text = s end
+		if p then pantsRow.Text = p end
+	end
+	updateClothing()
+	track(LocalPlayer.CharacterAdded:Connect(function()
+		task.wait(0.5)
+		updateClothing()
+	end))
 end
 
 function Acursive:CreateWindow(opts)
@@ -826,12 +786,14 @@ function Acursive:CreateWindow(opts)
 
 	self_.Pages = {}
 	self_.Tabs = {}
+	self_.TabObjects = {}
 	self_.TabOrder = 0
 	self_.CurrentTab = nil
 	self_.Visible = true
 	self_.Toggles = {}
 	self_.LastToggleTime = 0
 	self_.Destroyed = false
+	self_.OpenedDocks = {}
 
 	if THEMES[opts.Theme or ""] then
 		CurrentTheme = opts.Theme
@@ -889,8 +851,8 @@ function Acursive:CreateWindow(opts)
 	registerAccent(NavGlow)
 
 	local TabContainer = Instance.new("Frame")
-	TabContainer.Size = UDim2.new(1, -80, 1, 0)
-	TabContainer.Position = UDim2.new(0, 40, 0, 0)
+	TabContainer.Size = UDim2.new(1, -20, 1, 0)
+	TabContainer.Position = UDim2.new(0, 10, 0, 0)
 	TabContainer.BackgroundTransparency = 1
 	TabContainer.Parent = NavWrap
 	self_.TabContainer = TabContainer
@@ -993,11 +955,6 @@ function Acursive:CreateWindow(opts)
 	makeGradient(NavAccent)
 	makeGradient(TabIndicator)
 
-	self_.Profile = nil
-	if self_.ShowProfile then
-		self_.Profile = createProfilePanel(self_)
-	end
-
 	function self_:GetConfigFile() return self_.ConfigFile end
 
 	function self_:SaveConfig()
@@ -1034,6 +991,7 @@ function Acursive:CreateWindow(opts)
 		if not self_.CurrentTab then return self_.MinHeight end
 		local page = self_.Pages[self_.CurrentTab]
 		if not page or not page.Parent then return self_.MinHeight end
+		if DockManager:isDocked(self_.TabObjects[self_.CurrentTab]) then return self_.MinHeight end
 		local layout = page:FindFirstChildOfClass("UIListLayout")
 		if not layout then return self_.MinHeight end
 		local pad = page:FindFirstChildOfClass("UIPadding")
@@ -1081,7 +1039,6 @@ function Acursive:CreateWindow(opts)
 	function self_:Hide()
 		if not self_.Visible then return end
 		self_.Visible = false
-		if self_.Profile then self_.Profile.Close() end
 		tween(Main, 0.4, { Size = UDim2.new(0, self_.Size.X.Offset, 0, 0), Position = UDim2.new(0.5, 0, 0, 40) }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 		tween(NavWrap, 0.4, { Position = UDim2.new(0.5, 0, 0, -50), BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 		tween(NavStroke, 0.4, { Transparency = 1 })
@@ -1099,11 +1056,34 @@ function Acursive:CreateWindow(opts)
 	function self_:SetPosition(pos) Main.Position = pos end
 	function self_:SetSize(size) self_.Size = size self_:Resize(true) end
 	function self_:IsVisible() return self_.Visible end
-	function self_:GetProfile() return self_.Profile end
 
 	function self_:SelectTab(name)
 		if not self_.Tabs[name] or self_.CurrentTab == name then return end
-		for _, p in pairs(self_.Pages) do p.Visible = false end
+		local tabObj = self_.TabObjects[name]
+		if tabObj and DockManager:isDocked(tabObj) then
+			local btn = self_.Tabs[name]
+			for n, b in pairs(self_.Tabs) do
+				if n == name then
+					tween(b, 0.2, { TextColor3 = Accent })
+				else
+					tween(b, 0.2, { TextColor3 = Palette.Muted })
+				end
+			end
+			TabIndicator.Visible = true
+			local relX = btn.AbsolutePosition.X - NavWrap.AbsolutePosition.X + btn.AbsoluteSize.X / 2
+			tween(TabIndicator, 0.3, {
+				Position = UDim2.new(0, relX, 1, -2),
+				Size = UDim2.new(0, btn.AbsoluteSize.X - 14, 0, 2),
+			}, Enum.EasingStyle.Quart)
+			self_.CurrentTab = name
+			return
+		end
+		for n, p in pairs(self_.Pages) do
+			local tObj = self_.TabObjects[n]
+			if not (tObj and DockManager:isDocked(tObj)) then
+				p.Visible = false
+			end
+		end
 		if self_.Pages[name] then self_.Pages[name].Visible = true end
 		for n, b in pairs(self_.Tabs) do
 			if n == name then
@@ -1186,9 +1166,6 @@ function Acursive:CreateWindow(opts)
 				tween(btn, 0.15, { TextColor3 = Palette.Muted })
 			end
 		end))
-		track(btn.MouseButton1Click:Connect(function()
-			self_:SelectTab(name)
-		end))
 
 		local tab = setmetatable({}, TabClass)
 		tab.Window = self_
@@ -1197,6 +1174,28 @@ function Acursive:CreateWindow(opts)
 		tab._order = 0
 		tab.Sections = {}
 		tab.Destroyed = false
+		tab.Docked = false
+
+		self_.TabObjects[name] = tab
+
+		local lastClick = 0
+		local pendingSingle = nil
+		track(btn.MouseButton1Click:Connect(function()
+			local now = tick()
+			if now - lastClick < 0.35 then
+				if pendingSingle then task.cancel(pendingSingle) pendingSingle = nil end
+				lastClick = 0
+				DockManager:toggle(tab)
+			else
+				lastClick = now
+				pendingSingle = task.delay(0.35, function()
+					pendingSingle = nil
+					if DockManager:isDocked(tab) then return end
+					self_:SelectTab(name)
+				end)
+			end
+		end))
+
 		return tab
 	end
 
@@ -1204,7 +1203,7 @@ function Acursive:CreateWindow(opts)
 		trackThread(task.defer(function()
 			local first
 			for _, b in ipairs(TabContainer:GetChildren()) do
-				if b:IsA("TextButton") then first = b break end
+				if b:IsA("TextButton") and b.Name ~= "ProfileBtn" then first = b break end
 			end
 			if first then self_:SelectTab(first.Text) end
 		end))
@@ -1281,6 +1280,7 @@ function WindowClass:Destroy()
 	if self_.Destroyed then return end
 	self_.Destroyed = true
 	pcall(function() self_:SaveConfig() end)
+	DockManager:clearAll()
 	for _, c in ipairs(accentGradients) do
 		pcall(function() if c and c.Parent then c:Destroy() end end)
 	end
@@ -2114,8 +2114,6 @@ function TabClass:CreateSection(title, order)
 		lbl.Font = Enum.Font.Gotham
 		lbl.TextXAlignment = Enum.TextXAlignment.Left
 		lbl.ZIndex = 3
-		lbl.TextStrokeColor3 = Color3.new(0, 0, 0)
-		lbl.TextStrokeTransparency = 1
 		lbl.Parent = head
 
 		local hexLbl = Instance.new("TextLabel")
@@ -2128,8 +2126,6 @@ function TabClass:CreateSection(title, order)
 		hexLbl.Font = Enum.Font.Code
 		hexLbl.TextXAlignment = Enum.TextXAlignment.Right
 		hexLbl.ZIndex = 3
-		hexLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
-		hexLbl.TextStrokeTransparency = 1
 		hexLbl.Parent = head
 
 		local pickerBody = Instance.new("Frame")
@@ -2290,7 +2286,6 @@ function TabClass:CreateSection(title, order)
 		hbPad.Parent = hexBox
 
 		local magnifier = nil
-		local magnifierGlow = nil
 
 		local function hexText()
 			return string.format("#%02X%02X%02X", math.floor(current.R * 255), math.floor(current.G * 255), math.floor(current.B * 255))
@@ -2326,47 +2321,12 @@ function TabClass:CreateSection(title, order)
 				mStroke.Thickness = 2
 				mStroke.Parent = magnifier
 
-				local mShadow = Instance.new("UIStroke")
-				mShadow.Color = Color3.new(0, 0, 0)
-				mShadow.Thickness = 1
-				mShadow.Transparency = 0.4
-				mShadow.Parent = magnifier
-
-				local innerDot = Instance.new("Frame")
-				innerDot.Size = UDim2.new(0, 5, 0, 5)
-				innerDot.AnchorPoint = Vector2.new(0.5, 0.5)
-				innerDot.Position = UDim2.new(0.5, 0, 0.5, 0)
-				innerDot.BackgroundTransparency = 1
-				innerDot.ZIndex = 302
-				innerDot.Parent = magnifier
-
-				local idCorner = Instance.new("UICorner")
-				idCorner.CornerRadius = UDim.new(1, 0)
-				idCorner.Parent = innerDot
-
-				local idOuter = Instance.new("UIStroke")
-				idOuter.Color = Color3.new(1, 1, 1)
-				idOuter.Thickness = 2
-				idOuter.Parent = innerDot
-
-				local idInner = Instance.new("UIStroke")
-				idInner.Color = Color3.new(0, 0, 0)
-				idInner.Thickness = 1
-				idInner.Parent = innerDot
-
-				magnifierGlow = Instance.new("UIStroke")
-				magnifierGlow.Color = current
-				magnifierGlow.Thickness = 4
-				magnifierGlow.Transparency = 0.4
-				magnifierGlow.Parent = magnifier
-
 				TweenService:Create(magnifier, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 					Size = UDim2.new(0, 88, 0, 88),
 				}):Play()
 			end
 
 			magnifier.BackgroundColor3 = current
-			if magnifierGlow then magnifierGlow.Color = current end
 			local mousePos = UserInputService:GetMouseLocation()
 			magnifier.Position = UDim2.new(0, mousePos.X, 0, mousePos.Y - 75)
 		end
@@ -2375,7 +2335,6 @@ function TabClass:CreateSection(title, order)
 			if magnifier then
 				local m = magnifier
 				magnifier = nil
-				magnifierGlow = nil
 				TweenService:Create(m, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
 					Size = UDim2.new(0, 0, 0, 0),
 					BackgroundTransparency = 1,
@@ -2477,17 +2436,12 @@ function TabClass:CreateSection(title, order)
 					Position = UDim2.new(0, 0, 0, 0),
 				}, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 				tween(ps, 0.2, { Transparency = 1 })
-				tween(pc, 0.2, { CornerRadius = UDim.new(0, 2) })
-				tween(lbl, 0.2, { TextStrokeTransparency = 0.3 })
-				tween(hexLbl, 0.2, { TextStrokeTransparency = 0.3 })
 			else
 				tween(preview, 0.28, {
 					Size = UDim2.new(0, 40, 0, 16),
 					Position = UDim2.new(1, -48, 0.5, -8),
 				}, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 				tween(ps, 0.2, { Transparency = 0 })
-				tween(lbl, 0.2, { TextStrokeTransparency = 1 })
-				tween(hexLbl, 0.2, { TextStrokeTransparency = 1 })
 			end
 		end
 
@@ -2535,13 +2489,6 @@ function TabClass:CreateSection(title, order)
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 2)
 		corner.Parent = row
-
-		local rowShadow = Instance.new("UIStroke")
-		rowShadow.Color = Palette.Shadow
-		rowShadow.Thickness = 1
-		rowShadow.Transparency = 0.5
-		rowShadow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		rowShadow.Parent = row
 
 		local lbl = Instance.new("TextLabel")
 		lbl.Size = UDim2.new(1, -80, 1, 0)
@@ -2624,13 +2571,6 @@ function TabClass:CreateSection(title, order)
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 2)
 		corner.Parent = row
-
-		local rowShadow = Instance.new("UIStroke")
-		rowShadow.Color = Palette.Shadow
-		rowShadow.Thickness = 1
-		rowShadow.Transparency = 0.5
-		rowShadow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		rowShadow.Parent = row
 
 		local lbl = Instance.new("TextLabel")
 		lbl.Size = UDim2.new(0, 100, 1, 0)
@@ -2836,6 +2776,20 @@ end
 
 function TabClass:GetName()
 	return self.Name
+end
+
+local originalCreateWindow = Acursive.CreateWindow
+function Acursive:CreateWindow(opts)
+	local win = originalCreateWindow(self, opts)
+	if win and win.ShowProfile then
+		task.defer(function()
+			local profileTab = win:CreateTab("Profile", 0)
+			if profileTab then
+				buildProfilePage(profileTab.Page, win)
+			end
+		end)
+	end
+	return win
 end
 
 if getgenv then
