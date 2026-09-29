@@ -407,7 +407,14 @@ local function buildViewportCharacter(viewport)
 
 	local function applyChar(char)
 		if not char or not char.Parent then return end
-		local clone = char:Clone()
+		if not char:IsA("Model") then return end
+		if not char:FindFirstChildOfClass("Humanoid") then return end
+		if not char:FindFirstChild("HumanoidRootPart") then return end
+		local ok, clone = pcall(function() return char:Clone() end)
+		if not ok or not clone or not clone:IsA("Model") then
+			if clone then pcall(function() clone:Destroy() end) end
+			return
+		end
 		for _, d in ipairs(clone:GetDescendants()) do
 			if d:IsA("BasePart") then
 				d.Anchored = true
@@ -428,10 +435,29 @@ local function buildViewportCharacter(viewport)
 		cloneRef.model = clone
 	end
 
-	if LocalPlayer.Character then
-		applyChar(LocalPlayer.Character)
-	end
-	track(LocalPlayer.CharacterAdded:Connect(applyChar))
+	task.spawn(function()
+		local char = LocalPlayer.Character
+		if not char then
+			char = LocalPlayer.CharacterAdded:Wait()
+		end
+		if char then
+			pcall(function()
+				char:WaitForChild("Humanoid", 5)
+				char:WaitForChild("HumanoidRootPart", 5)
+			end)
+			task.wait(0.05)
+			applyChar(char)
+		end
+	end)
+
+	track(LocalPlayer.CharacterAdded:Connect(function(char)
+		pcall(function()
+			char:WaitForChild("Humanoid", 5)
+			char:WaitForChild("HumanoidRootPart", 5)
+		end)
+		task.wait(0.1)
+		applyChar(char)
+	end))
 
 	local radius = 5.6
 	local height = 1.6
@@ -715,7 +741,7 @@ local function createProfilePanel(window)
 		if opened then return end
 		opened = true
 		panel.Visible = true
-		if not cam then
+		if not cam or not cam.Parent then
 			cam, charRef = buildViewportCharacter(viewport)
 		end
 		tween(avStroke, 0.2, { Color = Accent })
