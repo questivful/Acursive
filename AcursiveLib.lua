@@ -38,7 +38,7 @@ local Palette = {
 
 Acursive.Themes = THEMES
 Acursive.Palette = Palette
-Acursive.Version = "1.0.0"
+Acursive.Version = "1.1.0"
 
 local Accent = THEMES.Orange.primary
 local AccentLight = THEMES.Orange.light
@@ -192,6 +192,7 @@ local function getNotifContainer()
 	c.Size = UDim2.new(0, 240, 0, 0)
 	c.AutomaticSize = Enum.AutomaticSize.Y
 	c.BackgroundTransparency = 1
+	c.ClipsDescendants = false
 	c.Parent = sg
 	local l = Instance.new("UIListLayout")
 	l.Padding = UDim.new(0, 6)
@@ -213,12 +214,19 @@ function Acursive:Notify(opts)
 	local container = getNotifContainer()
 	notifCounter = notifCounter + 1
 
+	local wrapper = Instance.new("Frame")
+	wrapper.Size = UDim2.new(1, 0, 0, 52)
+	wrapper.BackgroundTransparency = 1
+	wrapper.ClipsDescendants = false
+	wrapper.LayoutOrder = notifCounter
+	wrapper.Parent = container
+
 	local notif = Instance.new("Frame")
-	notif.Size = UDim2.new(1, 0, 0, 52)
+	notif.Size = UDim2.new(1, 0, 1, 0)
+	notif.Position = UDim2.new(0, 0, 0, 0)
 	notif.BackgroundColor3 = Palette.Panel
 	notif.BorderSizePixel = 0
-	notif.LayoutOrder = notifCounter
-	notif.Parent = container
+	notif.Parent = wrapper
 
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 3)
@@ -292,14 +300,14 @@ function Acursive:Notify(opts)
 	tween(progressFill, duration, { Size = UDim2.new(0, 0, 1, 0) }, Enum.EasingStyle.Linear)
 
 	task.delay(duration, function()
-		tween(notif, 0.3, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-		tween(titleLbl, 0.3, { TextTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-		tween(contentLbl, 0.3, { TextTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-		tween(accentBar, 0.3, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-		tween(progressBg, 0.3, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-		tween(progressFill, 0.3, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-		task.wait(0.35)
-		notif:Destroy()
+		tween(notif, 0.35, { Position = UDim2.new(0, 320, 0, 0), BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+		tween(titleLbl, 0.35, { TextTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+		tween(contentLbl, 0.35, { TextTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+		tween(accentBar, 0.35, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+		tween(progressBg, 0.35, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+		tween(progressFill, 0.35, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+		task.wait(0.4)
+		wrapper:Destroy()
 	end)
 	return notif
 end
@@ -336,6 +344,7 @@ function Acursive:CreateWindow(opts)
 	self_.CurrentTab = nil
 	self_.Visible = true
 	self_.Toggles = {}
+	self_.LastToggleTime = 0
 
 	if THEMES[opts.Theme or ""] then
 		CurrentTheme = opts.Theme
@@ -721,7 +730,13 @@ function Acursive:CreateWindow(opts)
 	if self_.ToggleKey then
 		UserInputService.InputBegan:Connect(function(input, processed)
 			if processed then return end
-			if input.KeyCode == self_.ToggleKey and not isTyping() then
+			if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+			if keyCapture then return end
+			if isTyping() then return end
+			if input.KeyCode == self_.ToggleKey then
+				local now = tick()
+				if now - self_.LastToggleTime < 0.25 then return end
+				self_.LastToggleTime = now
 				self_:Toggle()
 			end
 		end)
@@ -894,7 +909,6 @@ function TabClass:CreateSection(title, order)
 		local defaultKey = opts.Keybind or opts.DefaultKey
 		local noSave = opts.Save == false
 		local onDoubleClick = opts.OnDoubleClick
-		local tooltip = opts.Tooltip or opts.Description
 
 		local row = Instance.new("TextButton")
 		row.Size = UDim2.new(1, 0, 0, 22)
@@ -1069,17 +1083,14 @@ function TabClass:CreateSection(title, order)
 			save = not noSave,
 		}
 
-		local toggle = {
-			Set = function(_, v) setState(v, true) end,
+		return {
+			Set = function(v) setState(v, true) end,
 			Get = function() return state end,
-			SetKeybind = function(_, key) keyEntry.key = key keyEntry.callback = function() setState(not state, true) sec.Window:SaveConfig() end keyBtn.Text = tostring(key):gsub("Enum.KeyCode.", "") end,
-			SetVisible = function(_, v) row.Visible = v end,
-			SetName = function(_, t) lbl.Text = t end,
+			SetKeybind = function(key) keyEntry.key = key keyEntry.callback = function() setState(not state, true) sec.Window:SaveConfig() end keyBtn.Text = tostring(key):gsub("Enum.KeyCode.", "") end,
+			SetVisible = function(v) row.Visible = v end,
+			SetName = function(t) lbl.Text = t end,
 			Row = row,
 		}
-		toggle.Set = function(v) setState(v, true) end
-		toggle.Get = function() return state end
-		return toggle
 	end
 
 	function sec:CreateSlider(opts)
@@ -1182,18 +1193,18 @@ function TabClass:CreateSection(title, order)
 			end
 		end)
 
-		local slider = {}
-		slider.Set = function(v)
-			value = math.clamp(v, min, max)
-			local pos = (value - min) / (max - min)
-			fill.Size = UDim2.new(pos, 0, 1, 0)
-			valLbl.Text = string.format("%." .. decimals .. "f%s", value, suffix)
-			if callback then callback(value) end
-		end
-		slider.Get = function() return value end
-		slider.SetVisible = function(v) row.Visible = v end
-		slider.SetName = function(t) lbl.Text = t end
-		return slider
+		return {
+			Set = function(v)
+				value = math.clamp(v, min, max)
+				local pos = (value - min) / (max - min)
+				fill.Size = UDim2.new(pos, 0, 1, 0)
+				valLbl.Text = string.format("%." .. decimals .. "f%s", value, suffix)
+				if callback then callback(value) end
+			end,
+			Get = function() return value end,
+			SetVisible = function(v) row.Visible = v end,
+			SetName = function(t) lbl.Text = t end,
+		}
 	end
 
 	function sec:CreateButton(opts)
@@ -1328,7 +1339,6 @@ function TabClass:CreateSection(title, order)
 			tween(wrap, 0.25, { Size = UDim2.new(1, 0, 0, 22) }, Enum.EasingStyle.Quart)
 		end
 
-		local optButtons = {}
 		for i, opt in ipairs(options) do
 			local o = Instance.new("TextButton")
 			o.Size = UDim2.new(1, 0, 0, 20)
@@ -1343,7 +1353,6 @@ function TabClass:CreateSection(title, order)
 			o.AutoButtonColor = false
 			o.LayoutOrder = i
 			o.Parent = bodyFrame
-			optButtons[i] = o
 
 			o.MouseEnter:Connect(function()
 				tween(o, 0.15, { BackgroundTransparency = 0, BackgroundColor3 = Palette.RowHover, TextColor3 = Palette.Text })
@@ -1384,7 +1393,6 @@ function TabClass:CreateSection(title, order)
 				end
 				options = newOpts
 				bodyFrame.Size = UDim2.new(1, 0, 0, #options * 20)
-				optButtons = {}
 				for i, opt in ipairs(options) do
 					local o = Instance.new("TextButton")
 					o.Size = UDim2.new(1, 0, 0, 20)
@@ -1497,14 +1505,9 @@ function TabClass:CreateSection(title, order)
 		list.SortOrder = Enum.SortOrder.LayoutOrder
 		list.Parent = bodyFrame
 
-		local function countSelected()
+		local function updateText()
 			local n = 0
 			for _ in pairs(selected) do n = n + 1 end
-			return n
-		end
-
-		local function updateText()
-			local n = countSelected()
 			valLbl.Text = n == 0 and "none" or n .. " selected"
 		end
 		updateText()
@@ -1581,6 +1584,8 @@ function TabClass:CreateSection(title, order)
 		local current = opts.Default or Accent
 		local callback = opts.Callback
 
+		local h, s, v = Color3.toHSV(current)
+
 		local row = Instance.new("Frame")
 		row.Size = UDim2.new(1, 0, 0, 26)
 		row.BackgroundColor3 = Palette.Row
@@ -1629,44 +1634,433 @@ function TabClass:CreateSection(title, order)
 		ps.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		ps.Parent = preview
 
-		preview.MouseButton1Click:Connect(function()
-			local input = Instance.new("TextBox")
-			input.Size = UDim2.new(0, 100, 0, 20)
-			input.Position = UDim2.new(0.5, -50, 0.5, -10)
-			input.BackgroundColor3 = Palette.Row
-			input.Text = string.format("#%02X%02X%02X", math.floor(current.R * 255), math.floor(current.G * 255), math.floor(current.B * 255))
-			input.TextColor3 = Palette.Text
-			input.TextSize = 11
-			input.Font = Enum.Font.Code
-			input.ClearTextOnFocus = false
-			input.ZIndex = 100
-			input.Parent = self.Window.ScreenGui
-			input:CaptureFocus()
+		local popup = nil
+		local pickerConns = {}
 
-			local done = false
-			local function finish()
-				if done then return end
-				done = true
-				local hex = input.Text:gsub("#", "")
+		local function addConn(c)
+			table.insert(pickerConns, c)
+			return c
+		end
+
+		local function cleanupPicker()
+			for _, c in ipairs(pickerConns) do
+				pcall(function() c:Disconnect() end)
+			end
+			pickerConns = {}
+		end
+
+		local function buildPopup()
+			if popup then return end
+			local sg = sec.Window.ScreenGui
+
+			popup = Instance.new("Frame")
+			popup.Name = "AcursiveColorPicker"
+			popup.Size = UDim2.new(0, 200, 0, 220)
+			popup.BackgroundColor3 = Palette.Panel
+			popup.BorderSizePixel = 0
+			popup.ZIndex = 150
+			popup.Parent = sg
+
+			local absPos = preview.AbsolutePosition
+			local absSize = preview.AbsoluteSize
+			popup.Position = UDim2.new(0, absPos.X - 160 + absSize.X, 0, absPos.Y + absSize.Y + 6)
+
+			local pCorner = Instance.new("UICorner")
+			pCorner.CornerRadius = UDim.new(0, 3)
+			pCorner.Parent = popup
+
+			local pStroke = Instance.new("UIStroke")
+			pStroke.Color = Palette.Outline
+			pStroke.Thickness = 1
+			pStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			pStroke.Parent = popup
+
+			local pShadow = Instance.new("UIStroke")
+			pShadow.Color = Palette.Shadow
+			pShadow.Thickness = 2
+			pShadow.Transparency = 0.3
+			pShadow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			pShadow.Parent = popup
+
+			local header = Instance.new("TextLabel")
+			header.Size = UDim2.new(1, -30, 0, 20)
+			header.Position = UDim2.new(0, 10, 0, 5)
+			header.BackgroundTransparency = 1
+			header.Text = label
+			header.TextColor3 = Palette.TextBright
+			header.TextSize = 11
+			header.Font = Enum.Font.GothamBold
+			header.TextXAlignment = Enum.TextXAlignment.Left
+			header.ZIndex = 151
+			header.Parent = popup
+
+			local closeBtn = Instance.new("TextButton")
+			closeBtn.Size = UDim2.new(0, 18, 0, 18)
+			closeBtn.Position = UDim2.new(1, -22, 0, 5)
+			closeBtn.BackgroundColor3 = Palette.Input
+			closeBtn.BorderSizePixel = 0
+			closeBtn.Text = "X"
+			closeBtn.TextColor3 = Palette.Muted
+			closeBtn.TextSize = 10
+			closeBtn.Font = Enum.Font.GothamBold
+			closeBtn.AutoButtonColor = false
+			closeBtn.ZIndex = 151
+			closeBtn.Parent = popup
+
+			local cbCorner = Instance.new("UICorner")
+			cbCorner.CornerRadius = UDim.new(0, 2)
+			cbCorner.Parent = closeBtn
+
+			local satSquare = Instance.new("Frame")
+			satSquare.Size = UDim2.new(0, 180, 0, 130)
+			satSquare.Position = UDim2.new(0, 10, 0, 30)
+			satSquare.BackgroundColor3 = Color3.new(1, 1, 1)
+			satSquare.BorderSizePixel = 0
+			satSquare.ZIndex = 151
+			satSquare.Parent = popup
+
+			local sqCorner = Instance.new("UICorner")
+			sqCorner.CornerRadius = UDim.new(0, 2)
+			sqCorner.Parent = satSquare
+
+			local gradH = Instance.new("UIGradient")
+			gradH.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromHSV(h, 0, 1)),
+				ColorSequenceKeypoint.new(1, Color3.fromHSV(h, 1, 1)),
+			})
+			gradH.Parent = satSquare
+
+			local overlay = Instance.new("Frame")
+			overlay.Size = UDim2.new(1, 0, 1, 0)
+			overlay.BackgroundColor3 = Color3.new(0, 0, 0)
+			overlay.BorderSizePixel = 0
+			overlay.ZIndex = 152
+			overlay.Parent = satSquare
+
+			local ovCorner = Instance.new("UICorner")
+			ovCorner.CornerRadius = UDim.new(0, 2)
+			ovCorner.Parent = overlay
+
+			local gradV = Instance.new("UIGradient")
+			gradV.Rotation = 90
+			gradV.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(1, 0),
+			})
+			gradV.Parent = overlay
+
+			local satCursor = Instance.new("Frame")
+			satCursor.Size = UDim2.new(0, 10, 0, 10)
+			satCursor.AnchorPoint = Vector2.new(0.5, 0.5)
+			satCursor.Position = UDim2.new(s, 0, 1 - v, 0)
+			satCursor.BackgroundTransparency = 1
+			satCursor.ZIndex = 153
+			satCursor.Parent = satSquare
+
+			local scOuter = Instance.new("UIStroke")
+			scOuter.Color = Color3.new(1, 1, 1)
+			scOuter.Thickness = 2
+			scOuter.Parent = satCursor
+
+			local scInner = Instance.new("UIStroke")
+			scInner.Color = Color3.new(0, 0, 0)
+			scInner.Thickness = 1
+			scInner.Parent = satCursor
+
+			local scCorner2 = Instance.new("UICorner")
+			scCorner2.CornerRadius = UDim.new(1, 0)
+			scCorner2.Parent = satCursor
+
+			local hueSlider = Instance.new("Frame")
+			hueSlider.Size = UDim2.new(0, 180, 0, 12)
+			hueSlider.Position = UDim2.new(0, 10, 0, 170)
+			hueSlider.BackgroundColor3 = Color3.new(1, 0, 0)
+			hueSlider.BorderSizePixel = 0
+			hueSlider.ZIndex = 151
+			hueSlider.Parent = popup
+
+			local hsCorner = Instance.new("UICorner")
+			hsCorner.CornerRadius = UDim.new(0, 2)
+			hsCorner.Parent = hueSlider
+
+			local hueGrad = Instance.new("UIGradient")
+			hueGrad.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0.000, Color3.fromRGB(255, 0, 0)),
+				ColorSequenceKeypoint.new(0.167, Color3.fromRGB(255, 255, 0)),
+				ColorSequenceKeypoint.new(0.333, Color3.fromRGB(0, 255, 0)),
+				ColorSequenceKeypoint.new(0.500, Color3.fromRGB(0, 255, 255)),
+				ColorSequenceKeypoint.new(0.667, Color3.fromRGB(0, 0, 255)),
+				ColorSequenceKeypoint.new(0.833, Color3.fromRGB(255, 0, 255)),
+				ColorSequenceKeypoint.new(1.000, Color3.fromRGB(255, 0, 0)),
+			})
+			hueGrad.Parent = hueSlider
+
+			local hueCursor = Instance.new("Frame")
+			hueCursor.Size = UDim2.new(0, 4, 1, 4)
+			hueCursor.AnchorPoint = Vector2.new(0.5, 0.5)
+			hueCursor.Position = UDim2.new(h, 0, 0.5, 0)
+			hueCursor.BackgroundTransparency = 1
+			hueCursor.ZIndex = 153
+			hueCursor.Parent = hueSlider
+
+			local hcOuter = Instance.new("UIStroke")
+			hcOuter.Color = Color3.new(1, 1, 1)
+			hcOuter.Thickness = 2
+			hcOuter.Parent = hueCursor
+
+			local hcInner = Instance.new("UIStroke")
+			hcInner.Color = Color3.new(0, 0, 0)
+			hcInner.Thickness = 1
+			hcInner.Parent = hueCursor
+
+			local hcCorner = Instance.new("UICorner")
+			hcCorner.CornerRadius = UDim.new(0, 1)
+			hcCorner.Parent = hueCursor
+
+			local hexBox = Instance.new("TextBox")
+			hexBox.Size = UDim2.new(0, 180, 0, 20)
+			hexBox.Position = UDim2.new(0, 10, 0, 190)
+			hexBox.BackgroundColor3 = Palette.Input
+			hexBox.BorderSizePixel = 0
+			hexBox.Text = string.format("#%02X%02X%02X", math.floor(current.R * 255), math.floor(current.G * 255), math.floor(current.B * 255))
+			hexBox.TextColor3 = Palette.Text
+			hexBox.TextSize = 11
+			hexBox.Font = Enum.Font.Code
+			hexBox.ClearTextOnFocus = false
+			hexBox.ZIndex = 151
+			hexBox.Parent = popup
+
+			local hbCorner = Instance.new("UICorner")
+			hbCorner.CornerRadius = UDim.new(0, 2)
+			hbCorner.Parent = hexBox
+
+			local hbStroke = Instance.new("UIStroke")
+			hbStroke.Color = Palette.Outline
+			hbStroke.Thickness = 1
+			hbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			hbStroke.Parent = hexBox
+
+			local hbPad = Instance.new("UIPadding")
+			hbPad.PaddingLeft = UDim.new(0, 6)
+			hbPad.Parent = hexBox
+
+			local magnifier = nil
+
+			local function refreshAll()
+				satSquare.BackgroundColor3 = Color3.new(1, 1, 1)
+				gradH.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromHSV(h, 0, 1)),
+					ColorSequenceKeypoint.new(1, Color3.fromHSV(h, 1, 1)),
+				})
+				satCursor.Position = UDim2.new(s, 0, 1 - v, 0)
+				hueCursor.Position = UDim2.new(h, 0, 0.5, 0)
+				preview.BackgroundColor3 = current
+				hexBox.Text = string.format("#%02X%02X%02X", math.floor(current.R * 255), math.floor(current.G * 255), math.floor(current.B * 255))
+			end
+
+			local function showMagnifier()
+				if not magnifier then
+					magnifier = Instance.new("Frame")
+					magnifier.Name = "PickerMagnifier"
+					magnifier.Size = UDim2.new(0, 0, 0, 0)
+					magnifier.AnchorPoint = Vector2.new(0.5, 0.5)
+					magnifier.BackgroundColor3 = current
+					magnifier.BorderSizePixel = 0
+					magnifier.ZIndex = 300
+					magnifier.Parent = sec.Window.ScreenGui
+
+					local mCorner = Instance.new("UICorner")
+					mCorner.CornerRadius = UDim.new(1, 0)
+					mCorner.Parent = magnifier
+
+					local mStroke = Instance.new("UIStroke")
+					mStroke.Color = Color3.new(1, 1, 1)
+					mStroke.Thickness = 2
+					mStroke.Parent = magnifier
+
+					local mShadow = Instance.new("UIStroke")
+					mShadow.Color = Color3.new(0, 0, 0)
+					mShadow.Thickness = 1
+					mShadow.Transparency = 0.4
+					mShadow.Parent = magnifier
+
+					local innerDot = Instance.new("Frame")
+					innerDot.Size = UDim2.new(0, 5, 0, 5)
+					innerDot.AnchorPoint = Vector2.new(0.5, 0.5)
+					innerDot.Position = UDim2.new(0.5, 0, 0.5, 0)
+					innerDot.BackgroundTransparency = 1
+					innerDot.ZIndex = 302
+					innerDot.Parent = magnifier
+
+					local idCorner = Instance.new("UICorner")
+					idCorner.CornerRadius = UDim.new(1, 0)
+					idCorner.Parent = innerDot
+
+					local idOuter = Instance.new("UIStroke")
+					idOuter.Color = Color3.new(1, 1, 1)
+					idOuter.Thickness = 2
+					idOuter.Parent = innerDot
+
+					local idInner = Instance.new("UIStroke")
+					idInner.Color = Color3.new(0, 0, 0)
+					idInner.Thickness = 1
+					idInner.Parent = innerDot
+
+					local glow = Instance.new("UIStroke")
+					glow.Color = current
+					glow.Thickness = 4
+					glow.Transparency = 0.4
+					glow.Parent = magnifier
+
+					TweenService:Create(magnifier, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+						Size = UDim2.new(0, 88, 0, 88)
+					}):Play()
+				end
+
+				magnifier.BackgroundColor3 = current
+				local mousePos = UserInputService:GetMouseLocation()
+				magnifier.Position = UDim2.new(0, mousePos.X, 0, mousePos.Y - 70)
+
+				for _, c in ipairs(magnifier:GetChildren()) do
+					if c:IsA("UIStroke") and c.Thickness == 4 then
+						c.Color = current
+					end
+				end
+			end
+
+			local function hideMagnifier()
+				if magnifier then
+					local m = magnifier
+					magnifier = nil
+					TweenService:Create(m, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+						Size = UDim2.new(0, 0, 0, 0),
+						BackgroundTransparency = 1,
+					}):Play()
+					task.delay(0.25, function()
+						if m then pcall(function() m:Destroy() end) end
+					end)
+				end
+			end
+
+			local draggingSat, draggingHue = false, false
+
+			local function updateFromSat(input)
+				local relX = math.clamp((input.Position.X - satSquare.AbsolutePosition.X) / satSquare.AbsoluteSize.X, 0, 1)
+				local relY = math.clamp((input.Position.Y - satSquare.AbsolutePosition.Y) / satSquare.AbsoluteSize.Y, 0, 1)
+				s = relX
+				v = 1 - relY
+				current = Color3.fromHSV(h, s, v)
+				refreshAll()
+				if callback then callback(current) end
+			end
+
+			local function updateFromHue(input)
+				local relX = math.clamp((input.Position.X - hueSlider.AbsolutePosition.X) / hueSlider.AbsoluteSize.X, 0, 1)
+				h = relX
+				current = Color3.fromHSV(h, s, v)
+				refreshAll()
+				if callback then callback(current) end
+			end
+
+			satSquare.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					draggingSat = true
+					updateFromSat(input)
+					showMagnifier()
+				end
+			end)
+
+			hueSlider.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					draggingHue = true
+					updateFromHue(input)
+				end
+			end)
+
+			addConn(UserInputService.InputChanged:Connect(function(input)
+				if draggingSat and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+					updateFromSat(input)
+					showMagnifier()
+				end
+				if draggingHue and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+					updateFromHue(input)
+				end
+			end))
+
+			addConn(UserInputService.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					if draggingSat then
+						draggingSat = false
+						hideMagnifier()
+						sec.Window:SaveConfig()
+					end
+					if draggingHue then
+						draggingHue = false
+						sec.Window:SaveConfig()
+					end
+				end
+			end))
+
+			hexBox.FocusLost:Connect(function()
+				local hex = hexBox.Text:gsub("#", "")
 				if #hex == 6 then
 					local rn = tonumber(hex:sub(1, 2), 16)
 					local gn = tonumber(hex:sub(3, 4), 16)
 					local bn = tonumber(hex:sub(5, 6), 16)
 					if rn and gn and bn then
 						current = Color3.fromRGB(rn, gn, bn)
-						preview.BackgroundColor3 = current
+						h, s, v = Color3.toHSV(current)
+						refreshAll()
 						if callback then callback(current) end
-						sec.Window:SaveConfig()
 					end
 				end
-				input:Destroy()
+			end)
+
+			local function destroyPopup()
+				if magnifier then
+					pcall(function() magnifier:Destroy() end)
+					magnifier = nil
+				end
+				cleanupPicker()
+				if popup then
+					popup:Destroy()
+					popup = nil
+				end
 			end
-			input.FocusLost:Connect(finish)
+
+			closeBtn.MouseButton1Click:Connect(destroyPopup)
+
+			refreshAll()
+		end
+
+		preview.MouseButton1Click:Connect(function()
+			if popup then
+				if magnifier then pcall(function() magnifier:Destroy() end) end
+				cleanupPicker()
+				popup:Destroy()
+				popup = nil
+			else
+				buildPopup()
+			end
 		end)
 
 		return {
 			Get = function() return current end,
-			Set = function(c) current = c preview.BackgroundColor3 = c if callback then callback(c) end end,
+			Set = function(c)
+				current = c
+				h, s, v = Color3.toHSV(c)
+				preview.BackgroundColor3 = c
+				if popup then
+					pcall(function()
+						for _, child in ipairs(popup:GetDescendants()) do
+							if child.Name == "PickerMagnifier" then
+								child.BackgroundColor3 = c
+							end
+						end
+					end)
+				end
+				if callback then callback(c) end
+			end,
 			SetVisible = function(v) row.Visible = v end,
 			SetName = function(t) lbl.Text = t end,
 		}
@@ -1679,7 +2073,6 @@ function TabClass:CreateSection(title, order)
 		local label = opts.Name or opts.Label or "Keybind"
 		local defaultKey = opts.Default or Enum.KeyCode.E
 		local callback = opts.Callback
-		local holdMode = opts.Hold or false
 
 		local row = Instance.new("Frame")
 		row.Size = UDim2.new(1, 0, 0, 22)
