@@ -522,6 +522,7 @@ function Baseline.new(canvasGroup)
 	self.MinimapLinesPool = {}
 	self.FoldButtonsPool = {}
 	self.IndentGuidesPool = {}
+	self.AutocompleteRows = {}
 	self.FoldedLines = {}
 	self.CurrentFoldPairs = {}
 	self.SyntaxRules = nil
@@ -543,6 +544,7 @@ function Baseline.new(canvasGroup)
 	self.LastClickTime = 0
 	self.LastTypedChar = ""
 	self.LastTypedTick = 0
+	self.PasteGuardUntil = 0
 	self.History = {{text = "", cursor = 0, sel = 0}}
 	self.HistoryIdx = 1
 	self.SinkActionName = "BaselineSink_" .. HttpService:GenerateGUID(false)
@@ -559,7 +561,7 @@ function Baseline.new(canvasGroup)
 	self.AutocompleteVisible = false
 	self.AutocompleteMatches = {}
 	self.AutocompleteIndex = 1
-	self.AutocompleteSelectionColor = Color3.fromRGB(37, 75, 122)
+	self.AutocompleteSelectionColor = Color3.fromRGB(45, 90, 160)
 	self.AutocompleteBackgroundColor = Color3.fromRGB(30, 30, 30)
 	self.AutocompleteTextColor = Color3.fromRGB(220, 220, 220)
 	self.AutocompleteSelectedTextColor = Color3.fromRGB(255, 255, 255)
@@ -681,15 +683,26 @@ function Baseline.new(canvasGroup)
 
 	self.AutocompleteUI = Instance.new("Frame")
 	self.AutocompleteUI.Name = "AutocompleteUI"
-	self.AutocompleteUI.Size = UDim2.new(0, 260, 0, 160)
-	self.AutocompleteUI.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	self.AutocompleteUI.Size = UDim2.new(0, 240, 0, 160)
+	self.AutocompleteUI.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
 	self.AutocompleteUI.BorderSizePixel = 0
 	self.AutocompleteUI.ZIndex = 100
 	self.AutocompleteUI.Visible = false
 	self.AutocompleteUI.Parent = self.CanvasGroup
 
+	local acCorner = Instance.new("UICorner")
+	acCorner.CornerRadius = UDim.new(0, 4)
+	acCorner.Parent = self.AutocompleteUI
+
+	local acStroke = Instance.new("UIStroke")
+	acStroke.Color = Color3.fromRGB(0, 0, 0)
+	acStroke.Transparency = 0.6
+	acStroke.Thickness = 1
+	acStroke.Parent = self.AutocompleteUI
+
 	self.AutocompleteScroll = Instance.new("ScrollingFrame")
-	self.AutocompleteScroll.Size = UDim2.new(1, 0, 1, 0)
+	self.AutocompleteScroll.Size = UDim2.new(1, -2, 1, -2)
+	self.AutocompleteScroll.Position = UDim2.new(0, 1, 0, 1)
 	self.AutocompleteScroll.BackgroundTransparency = 1
 	self.AutocompleteScroll.ScrollBarThickness = 2
 	self.AutocompleteScroll.ScrollBarImageTransparency = 1
@@ -705,19 +718,29 @@ function Baseline.new(canvasGroup)
 
 	self.AutocompleteHint = Instance.new("Frame")
 	self.AutocompleteHint.Name = "AutocompleteHint"
-	self.AutocompleteHint.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	self.AutocompleteHint.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
 	self.AutocompleteHint.BorderSizePixel = 0
 	self.AutocompleteHint.Visible = false
 	self.AutocompleteHint.ZIndex = 101
 	self.AutocompleteHint.Parent = self.AutocompleteUI
 
+	local hintCorner = Instance.new("UICorner")
+	hintCorner.CornerRadius = UDim.new(0, 4)
+	hintCorner.Parent = self.AutocompleteHint
+
+	local hintStroke = Instance.new("UIStroke")
+	hintStroke.Color = Color3.fromRGB(0, 0, 0)
+	hintStroke.Transparency = 0.6
+	hintStroke.Thickness = 1
+	hintStroke.Parent = self.AutocompleteHint
+
 	self.AutocompleteHintText = Instance.new("TextLabel")
 	self.AutocompleteHintText.Size = UDim2.new(1, -10, 1, 0)
 	self.AutocompleteHintText.Position = UDim2.new(0, 5, 0, 0)
 	self.AutocompleteHintText.BackgroundTransparency = 1
-	self.AutocompleteHintText.TextColor3 = Color3.fromRGB(220, 220, 220)
+	self.AutocompleteHintText.TextColor3 = Color3.fromRGB(200, 200, 210)
 	self.AutocompleteHintText.Font = Enum.Font.Code
-	self.AutocompleteHintText.TextSize = 14
+	self.AutocompleteHintText.TextSize = 12
 	self.AutocompleteHintText.TextXAlignment = Enum.TextXAlignment.Left
 	self.AutocompleteHintText.ZIndex = 102
 	self.AutocompleteHintText.Parent = self.AutocompleteHint
@@ -741,13 +764,13 @@ function Baseline.new(canvasGroup)
 
 	table.insert(self.Connections, self.PasteBox:GetPropertyChangedSignal("Text"):Connect(function()
 		local text = self.PasteBox.Text
-		if text ~= "" then
-			task.defer(function()
-				if self.PasteBox and self.PasteBox.Text == text then self.PasteBox.Text = "" end
-			end)
-			if text == "\n" or text == "\r\n" or text == "\r" then return end
-			local isManualKeystroke = (#text == 1) and (text == self.LastTypedChar) and ((tick() - self.LastTypedTick) < 0.2)
-			if not isManualKeystroke then self:PasteChunked(text) end
+		if text == "" then return end
+		self.PasteBox.Text = ""
+		if text == "\n" or text == "\r\n" or text == "\r" then return end
+		if tick() < self.PasteGuardUntil then return end
+		local isManualKeystroke = (#text == 1) and (text == self.LastTypedChar) and ((tick() - self.LastTypedTick) < 0.25)
+		if not isManualKeystroke then
+			self:PasteChunked(text)
 		end
 	end))
 
@@ -877,6 +900,7 @@ function Baseline.new(canvasGroup)
 				self:Cut()
 				return
 			elseif isCtrlDown and input.KeyCode == Enum.KeyCode.V then
+				self.PasteGuardUntil = tick() + 0.3
 				self.LastTypedChar = ""
 				return
 			elseif isCtrlDown and input.KeyCode == Enum.KeyCode.F then
@@ -968,7 +992,7 @@ function Baseline.new(canvasGroup)
 		}
 		if updateBlinkerAttributes[attributeName] then
 			self:UpdateBlinker(true)
-		elseif attributeName == "BlinkerColor" then
+		elseif attributeName == "BlinkerColor" or attributeName == "BlinkerColor3" then
 			self.Blinker.BackgroundColor3 = value
 		elseif attributeName == "PlaceholderColor3" then
 			self.PlaceholderLabel.TextColor3 = value
@@ -990,7 +1014,7 @@ function Baseline.new(canvasGroup)
 			local allowedAttributes = {
 				Text = true, MultiLine = true, Wrapped = true, Minimap = true,
 				SmoothBlinker = true, TextSize = true, TextColor3 = true,
-				BlinkerColor = true, HighlightColor = true, Font = true,
+				BlinkerColor = true, BlinkerColor3 = true, HighlightColor = true, Font = true,
 				PlaceholderText = true, PlaceholderColor3 = true, AutoHeight = true,
 				MaxLength = true, PasswordMode = true, ReadOnly = true, HideScrollbars = true,
 				TabIndex = true, Lines = true, LineNumberColor3 = true,
@@ -2045,11 +2069,12 @@ function Baseline:Paste()
 end
 
 function Baseline:Focus()
-	if self.IsFocused then return end
-	self.IsFocused = true
-	self.Blinker.Visible = self.SelectionStart == self.CursorIndex
-	self.BlinkTimer = 0
-	ContextActionService:BindAction(self.SinkActionName, function() return Enum.ContextActionResult.Sink end, false, unpack(KeyMaps.SinkKeys))
+	if not self.IsFocused then
+		self.IsFocused = true
+		self.Blinker.Visible = self.SelectionStart == self.CursorIndex
+		self.BlinkTimer = 0
+		ContextActionService:BindAction(self.SinkActionName, function() return Enum.ContextActionResult.Sink end, false, unpack(KeyMaps.SinkKeys))
+	end
 	self.PasteBox:CaptureFocus()
 	self:UpdateBlinker(true)
 end
@@ -2080,58 +2105,80 @@ end
 function Baseline:RenderAutocomplete()
 	self.AutocompleteVisible = true
 	self.AutocompleteUI.Visible = true
-	for _, child in ipairs(self.AutocompleteScroll:GetChildren()) do
-		if child:IsA("Frame") then child:Destroy() end
-	end
-	local yOffset = 0
-	for i, match in ipairs(self.AutocompleteMatches) do
+	local ROW_HEIGHT = 22
+	local rows = self.AutocompleteRows
+	local needed = #self.AutocompleteMatches
+	for i = 1, needed do
+		local row = rows[i]
+		if not row then
+			row = {}
+			local rowFrame = Instance.new("Frame")
+			rowFrame.Name = "ACRow" .. i
+			rowFrame.Size = UDim2.new(1, 0, 0, ROW_HEIGHT)
+			rowFrame.BackgroundColor3 = self.AutocompleteBackgroundColor
+			rowFrame.BackgroundTransparency = 1
+			rowFrame.BorderSizePixel = 0
+			rowFrame.ZIndex = 101
+			rowFrame.Parent = self.AutocompleteScroll
+
+			local btn = Instance.new("TextButton")
+			btn.Size = UDim2.new(1, 0, 1, 0)
+			btn.BackgroundTransparency = 1
+			btn.Text = ""
+			btn.ZIndex = 102
+			btn.Parent = rowFrame
+
+			local icon = Instance.new("ImageLabel")
+			icon.Size = UDim2.new(0, 14, 0, 14)
+			icon.Position = UDim2.new(0, 6, 0.5, 0)
+			icon.AnchorPoint = Vector2.new(0, 0.5)
+			icon.BackgroundTransparency = 1
+			icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+			icon.ZIndex = 102
+			icon.Parent = rowFrame
+
+			local label = Instance.new("TextLabel")
+			label.Size = UDim2.new(1, -26, 1, 0)
+			label.Position = UDim2.new(0, 24, 0, 0)
+			label.BackgroundTransparency = 1
+			label.Font = Enum.Font.RobotoMono
+			label.TextSize = 13
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.ZIndex = 102
+			label.Parent = rowFrame
+
+			row.Frame = rowFrame
+			row.Button = btn
+			row.Icon = icon
+			row.Label = label
+			rows[i] = row
+
+			btn.MouseButton1Click:Connect(function()
+				self.AutocompleteIndex = i
+				self:CommitAutocomplete()
+			end)
+		end
+		local match = self.AutocompleteMatches[i]
 		local isSelected = (i == self.AutocompleteIndex)
-		local rowFrame = Instance.new("Frame")
-		rowFrame.Size = UDim2.new(1, 0, 0, 24)
-		rowFrame.BackgroundColor3 = isSelected and self.AutocompleteSelectionColor or self.AutocompleteBackgroundColor
-		rowFrame.BorderSizePixel = 0
-		rowFrame.ZIndex = 101
-		rowFrame.Parent = self.AutocompleteScroll
-		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(1, 0, 1, 0)
-		btn.BackgroundTransparency = 1
-		btn.Text = ""
-		btn.ZIndex = 102
-		btn.Parent = rowFrame
-		local icon = Instance.new("ImageLabel")
-		icon.Size = UDim2.new(0, 16, 0, 16)
-		icon.Position = UDim2.new(0, 6, 0.5, 0)
-		icon.AnchorPoint = Vector2.new(0, 0.5)
-		icon.BackgroundTransparency = 1
-		icon.Image = match.icon
-		icon.ResampleMode = Enum.ResamplerMode.Default
-		icon.ZIndex = 102
-		icon.Parent = rowFrame
-		local label = Instance.new("TextLabel")
-		label.Size = UDim2.new(1, -30, 1, 0)
-		label.Position = UDim2.new(0, 28, 0, 0)
-		label.BackgroundTransparency = 1
-		label.Text = match.word
-		label.TextColor3 = isSelected and self.AutocompleteSelectedTextColor or self.AutocompleteTextColor
-		label.Font = Enum.Font.RobotoMono
-		label.TextSize = 14
-		label.TextXAlignment = Enum.TextXAlignment.Left
-		label.ZIndex = 102
-		label.Parent = rowFrame
-		btn.MouseButton1Click:Connect(function()
-			self.AutocompleteIndex = i
-			self:CommitAutocomplete()
-		end)
-		yOffset = yOffset + 24
+		row.Frame.BackgroundColor3 = isSelected and self.AutocompleteSelectionColor or self.AutocompleteBackgroundColor
+		row.Frame.BackgroundTransparency = isSelected and 0 or 1
+		row.Icon.Image = match.icon
+		row.Label.Text = match.word
+		row.Label.TextColor3 = isSelected and self.AutocompleteSelectedTextColor or self.AutocompleteTextColor
+		row.Frame.Visible = true
+		row.Frame.LayoutOrder = i
 	end
-	self.AutocompleteScroll.CanvasSize = UDim2.new(0, 0, 0, yOffset)
+	for i = needed + 1, #rows do
+		rows[i].Frame.Visible = false
+	end
+	self.AutocompleteScroll.CanvasSize = UDim2.new(0, 0, 0, needed * ROW_HEIGHT)
 	local scrollPos = self.AutocompleteScroll.CanvasPosition.Y
-	local btnTop = (self.AutocompleteIndex - 1) * 24
-	local btnBottom = btnTop + 24
-	if btnTop < scrollPos then
-		self.AutocompleteScroll.CanvasPosition = Vector2.new(0, btnTop)
-	elseif btnBottom > scrollPos + self.AutocompleteScroll.AbsoluteWindowSize.Y then
-		self.AutocompleteScroll.CanvasPosition = Vector2.new(0, btnBottom - self.AutocompleteScroll.AbsoluteWindowSize.Y)
+	local selTop = (self.AutocompleteIndex - 1) * ROW_HEIGHT
+	local selBottom = selTop + ROW_HEIGHT
+	if selTop < scrollPos then
+		self.AutocompleteScroll.CanvasPosition = Vector2.new(0, selTop)
+	elseif selBottom > scrollPos + self.AutocompleteScroll.AbsoluteWindowSize.Y then
+		self.AutocompleteScroll.CanvasPosition = Vector2.new(0, selBottom - self.AutocompleteScroll.AbsoluteWindowSize.Y)
 	end
 end
 
@@ -2344,6 +2391,8 @@ function Baseline:ProcessKey(keyCode, isShiftDown, isCtrlDown)
 				self.SelectionStart = self.CursorIndex
 				self:PushHistory()
 			end
+			self:UpdateBlinker(true)
+			self:UpdateAutocompleteUI()
 		end
 	elseif keyCode == Enum.KeyCode.Left then
 		if isCtrlDown then
@@ -2886,7 +2935,7 @@ function Baseline:UpdateBlinker(autoScrollEnabled)
 		local targetHighlightPosition = UDim2.new(0, 0, 0, (4 + currentCursorY) - scrollOffsetY)
 		local targetHighlightSize = UDim2.new(1, 0, 0, currentCursorHeight)
 		if self.CanvasGroup:GetAttribute("SmoothBlinker") then
-			local tweenInfo = TweenInfo.new(0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+			local tweenInfo = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 			TweenService:Create(self.CurrentLineHighlight, tweenInfo, {
 				Position = targetHighlightPosition,
 				Size = targetHighlightSize
@@ -3320,7 +3369,7 @@ function Baseline:UpdateBlinker(autoScrollEnabled)
 	local targetBlinkerPosition = UDim2.new(0, 4 + currentCursorX, 0, 4 + currentCursorY)
 	local targetBlinkerSize = UDim2.new(0, 1, 0, currentCursorHeight)
 	if self.CanvasGroup:GetAttribute("SmoothBlinker") then
-		local tweenInfo = TweenInfo.new(0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+		local tweenInfo = TweenInfo.new(0.06, Enum.EasingStyle.Linear)
 		TweenService:Create(self.Blinker, tweenInfo, {
 			Position = targetBlinkerPosition,
 			Size = targetBlinkerSize
@@ -3336,8 +3385,9 @@ function Baseline:UpdateBlinker(autoScrollEnabled)
 		local absX = (4 + currentCursorX) - scrollOffsetX
 		local absY = (4 + currentCursorY + currentCursorHeight) - scrollOffsetY + 4
 
-		local dynamicHeight = math.min(#self.AutocompleteMatches * 24, 160)
-		self.AutocompleteUI.Size = UDim2.new(0, 260, 0, dynamicHeight)
+		local dynamicHeight = math.min(#self.AutocompleteMatches * 22 + 2, 160)
+		local panelWidth = 240
+		self.AutocompleteUI.Size = UDim2.new(0, panelWidth, 0, dynamicHeight)
 
 		if absY + dynamicHeight > self.CanvasGroup.AbsoluteSize.Y then
 			absY = (4 + currentCursorY) - scrollOffsetY - dynamicHeight - 4
@@ -3346,10 +3396,10 @@ function Baseline:UpdateBlinker(autoScrollEnabled)
 		local match = self.AutocompleteMatches[self.AutocompleteIndex]
 		if match then
 			self.AutocompleteHintText.Text = match.type
-			local bounds = Utils.getTextSize(match.type, 14, Enum.Font.Code, Vector2.new(1000, 24))
-			self.AutocompleteHint.Size = UDim2.new(0, bounds.X + 16, 0, 24)
-			local rowRelativeY = (self.AutocompleteIndex - 1) * 24 - self.AutocompleteScroll.CanvasPosition.Y
-			self.AutocompleteHint.Position = UDim2.new(1, 1, 0, rowRelativeY)
+			local bounds = Utils.getTextSize(match.type, 12, Enum.Font.Code, Vector2.new(1000, 22))
+			self.AutocompleteHint.Size = UDim2.new(0, bounds.X + 14, 0, 22)
+			local rowRelativeY = (self.AutocompleteIndex - 1) * 22 - self.AutocompleteScroll.CanvasPosition.Y
+			self.AutocompleteHint.Position = UDim2.new(1, 6, 0, rowRelativeY + 1)
 			self.AutocompleteHint.Visible = true
 
 			local currentWord = Utils.getWordBeforeCursor(displayedText, self.CursorIndex)
