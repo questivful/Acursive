@@ -7,6 +7,8 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
+local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
 local THEMES = {
@@ -38,7 +40,7 @@ local Palette = {
 
 Acursive.Themes = THEMES
 Acursive.Palette = Palette
-Acursive.Version = "1.5.0"
+Acursive.Version = "1.6.0"
 
 local Accent = THEMES.Orange.primary
 local AccentLight = THEMES.Orange.light
@@ -55,6 +57,19 @@ local trackedWindows = {}
 local screenGui
 local notifContainer
 local notifCounter = 0
+
+local FocusMode = {
+	Active = false,
+	BlurEffect = nil,
+	ParticleGui = nil,
+	Particles = {},
+	ParticleConnection = nil,
+	OriginalFOV = nil,
+	HiddenPlayerGui = {},
+	HiddenRobloxGui = {},
+	CoreGuiStates = {},
+	Depth = 0,
+}
 
 local function track(conn)
 	if conn then table.insert(trackedConnections, conn) end
@@ -139,6 +154,231 @@ function Acursive:SetRGB(enabled)
 	RGBMode = enabled and true or false
 end
 
+local function particleHost()
+	if screenGui and screenGui.Parent then
+		return screenGui.Parent
+	end
+	local ok, parented = pcall(function()
+		if CoreGui:FindFirstChild("RobloxGui") then
+			return CoreGui.RobloxGui
+		end
+		return nil
+	end)
+	if ok and parented then return parented end
+	return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+function FocusMode:_CreateParticles()
+	if self.ParticleGui then return end
+	local host = particleHost()
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "AcursiveFocus"
+	sg.ResetOnSpawn = false
+	sg.IgnoreGuiInset = true
+	sg.DisplayOrder = -1
+	sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	sg.Parent = host
+	self.ParticleGui = sg
+
+	local count = 22
+	for i = 1, count do
+		local size = math.random(3, 9)
+		local p = Instance.new("Frame")
+		p.Name = "Particle_" .. i
+		p.Size = UDim2.new(0, size, 0, size)
+		p.Position = UDim2.new(math.random(), 0, math.random(), 0)
+		p.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		p.BackgroundTransparency = 0.72 + math.random() * 0.22
+		p.BorderSizePixel = 0
+		p.ZIndex = 0
+		p.Parent = sg
+
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(1, 0)
+		c.Parent = p
+
+		local vx = (math.random() - 0.5) * 0.035
+		local vy = (math.random() - 0.5) * 0.035
+		if math.abs(vx) < 0.008 then vx = 0.012 end
+		if math.abs(vy) < 0.008 then vy = 0.012 end
+		p:SetAttribute("vx", vx)
+		p:SetAttribute("vy", vy)
+		p:SetAttribute("baseT", p.BackgroundTransparency)
+
+		table.insert(self.Particles, p)
+	end
+
+	self.ParticleConnection = RunService.Heartbeat:Connect(function(dt)
+		for _, p in ipairs(self.Particles) do
+			if p and p.Parent then
+				local pos = p.Position
+				local vx = p:GetAttribute("vx") or 0
+				local vy = p:GetAttribute("vy") or 0
+				local nx = pos.X.Scale + vx * dt
+				local ny = pos.Y.Scale + vy * dt
+				if nx < -0.05 then nx = 1.05 end
+				if nx > 1.05 then nx = -0.05 end
+				if ny < -0.05 then ny = 1.05 end
+				if ny > 1.05 then ny = -0.05 end
+				p.Position = UDim2.new(nx, 0, ny, 0)
+				local tw = math.sin(tick() * 0.8 + p.AbsoluteSize.X) * 0.06
+				local base = p:GetAttribute("baseT") or 0.8
+				p.BackgroundTransparency = math.clamp(base + tw, 0.6, 0.95)
+			end
+		end
+	end)
+end
+
+function FocusMode:_DestroyParticles()
+	if self.ParticleConnection then
+		pcall(function() self.ParticleConnection:Disconnect() end)
+		self.ParticleConnection = nil
+	end
+	for _, p in ipairs(self.Particles) do
+		if p then pcall(function() p:Destroy() end) end
+	end
+	self.Particles = {}
+	if self.ParticleGui then
+		pcall(function() self.ParticleGui:Destroy() end)
+		self.ParticleGui = nil
+	end
+end
+
+function FocusMode:_HideGuis()
+	local pg = LocalPlayer:FindFirstChild("PlayerGui")
+	if pg then
+		for _, child in ipairs(pg:GetChildren()) do
+			if child:IsA("ScreenGui") and child ~= screenGui and child.Name ~= "AcursiveFocus" then
+				if child.Enabled then
+					self.HiddenPlayerGui[child] = true
+					child.Enabled = false
+				end
+			end
+		end
+	end
+
+	local robloxGui
+	pcall(function()
+		if CoreGui:FindFirstChild("RobloxGui") then
+			robloxGui = CoreGui.RobloxGui
+		end
+	end)
+	if robloxGui then
+		for _, child in ipairs(robloxGui:GetChildren()) do
+			if child ~= screenGui and child:IsA("GuiObject") and child.Visible then
+				self.HiddenRobloxGui[child] = true
+				child.Visible = false
+			end
+		end
+	end
+
+	local ok, types = pcall(function() return Enum.CoreGuiType:GetEnumItems() end)
+	if ok and types then
+		for _, t in ipairs(types) do
+			local okGet, state = pcall(function() return StarterGui:GetCoreGuiEnabled(t) end)
+			if okGet and state then
+				self.CoreGuiStates[t] = true
+				pcall(function() StarterGui:SetCoreGuiEnabled(t, false) end)
+			end
+		end
+	end
+end
+
+function FocusMode:_RestoreGuis()
+	for child in pairs(self.HiddenPlayerGui) do
+		if child and child.Parent then
+			pcall(function() child.Enabled = true end)
+		end
+	end
+	table.clear(self.HiddenPlayerGui)
+
+	for child in pairs(self.HiddenRobloxGui) do
+		if child and child.Parent then
+			pcall(function() child.Visible = true end)
+		end
+	end
+	table.clear(self.HiddenRobloxGui)
+
+	for t in pairs(self.CoreGuiStates) do
+		pcall(function() StarterGui:SetCoreGuiEnabled(t, true) end)
+	end
+	table.clear(self.CoreGuiStates)
+end
+
+function FocusMode:Enable()
+	self.Depth = self.Depth + 1
+	if self.Active then return end
+	self.Active = true
+
+	local cam = workspace.CurrentCamera
+	if cam then
+		self.OriginalFOV = cam.FieldOfView
+		local target = math.max(40, self.OriginalFOV - 15)
+		TweenService:Create(cam, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { FieldOfView = target }):Play()
+	end
+
+	if self.BlurEffect then pcall(function() self.BlurEffect:Destroy() end) end
+	local blur = Instance.new("BlurEffect")
+	blur.Name = "AcursiveBlur"
+	blur.Size = 0
+	blur.Parent = Lighting
+	TweenService:Create(blur, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Size = 14 }):Play()
+	self.BlurEffect = blur
+
+	self:_CreateParticles()
+	self:_HideGuis()
+end
+
+function FocusMode:Disable()
+	self.Depth = self.Depth - 1
+	if self.Depth > 0 then return end
+	self.Depth = 0
+	if not self.Active then return end
+	self.Active = false
+
+	local cam = workspace.CurrentCamera
+	if cam and self.OriginalFOV then
+		TweenService:Create(cam, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { FieldOfView = self.OriginalFOV }):Play()
+	end
+
+	if self.BlurEffect then
+		local b = self.BlurEffect
+		self.BlurEffect = nil
+		TweenService:Create(b, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Size = 0 }):Play()
+		task.delay(0.45, function()
+			if b then pcall(function() b:Destroy() end) end
+		end)
+	end
+
+	local particles = self.ParticleGui
+	if particles then
+		for _, p in ipairs(self.Particles) do
+			if p and p.Parent then
+				pcall(function()
+					TweenService:Create(p, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
+				end)
+			end
+		end
+	end
+	task.delay(0.32, function()
+		self:_DestroyParticles()
+	end)
+
+	self:_RestoreGuis()
+end
+
+function Acursive:SetFocusMode(enabled)
+	if enabled then
+		FocusMode:Enable()
+	else
+		FocusMode:Disable()
+	end
+end
+
+function Acursive:GetFocusMode()
+	return FocusMode.Active
+end
+
 function Acursive:Cleanup()
 	for _, c in ipairs(trackedConnections) do
 		pcall(function() if typeof(c) == "RBXScriptConnection" and c.Connected then c:Disconnect() end end)
@@ -153,6 +393,10 @@ function Acursive:Cleanup()
 	table.clear(accentGradients)
 	table.clear(activeKeybinds)
 	keyCapture = nil
+	if FocusMode.Active or FocusMode.Depth > 0 then
+		FocusMode.Depth = 0
+		FocusMode:Disable()
+	end
 	if screenGui then pcall(function() screenGui:Destroy() end) end
 	screenGui = nil
 	notifContainer = nil
@@ -198,6 +442,7 @@ local function getScreenGui()
 	sg.Name = "Acursive"
 	sg.ResetOnSpawn = false
 	sg.IgnoreGuiInset = true
+	sg.DisplayOrder = 100
 	sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	local parented = false
 	pcall(function()
@@ -888,6 +1133,9 @@ function Acursive:CreateWindow(opts)
 	self_.HeaderHeight = opts.HeaderHeight or 16
 	self_.ShowBranding = opts.ShowBranding ~= false
 	self_.ShowProfile = opts.ShowProfile ~= false
+	self_.FocusModeEnabled = opts.FocusMode ~= false
+	self_.FocusFOVDrop = opts.FocusFOVDrop or 15
+	self_.FocusBlur = opts.FocusBlur or 14
 
 	self_.Pages = {}
 	self_.Tabs = {}
@@ -899,6 +1147,7 @@ function Acursive:CreateWindow(opts)
 	self_.LastToggleTime = 0
 	self_.Destroyed = false
 	self_.OpenedDocks = {}
+	self_.FocusActive = false
 
 	if THEMES[opts.Theme or ""] then
 		CurrentTheme = opts.Theme
@@ -1142,6 +1391,10 @@ function Acursive:CreateWindow(opts)
 			TabIndicator.Size = UDim2.new(0, t.AbsoluteSize.X - 14, 0, 2)
 			TabIndicator.Visible = true
 		end
+		if self_.FocusModeEnabled and not self_.FocusActive then
+			self_.FocusActive = true
+			FocusMode:Enable()
+		end
 	end
 
 	function self_:Hide()
@@ -1155,6 +1408,10 @@ function Acursive:CreateWindow(opts)
 		for _, c in pairs(DockManager.containers) do
 			if c and c.Parent then c.Visible = false end
 		end
+		if self_.FocusModeEnabled and self_.FocusActive then
+			self_.FocusActive = false
+			FocusMode:Disable()
+		end
 	end
 
 	function self_:Toggle()
@@ -1167,6 +1424,7 @@ function Acursive:CreateWindow(opts)
 	function self_:SetPosition(pos) Main.Position = pos end
 	function self_:SetSize(size) self_.Size = size self_:Resize(true) end
 	function self_:IsVisible() return self_.Visible end
+	function self_:SetFocusFOVDrop(v) self_.FocusFOVDrop = v end
 
 	function self_:SelectTab(name)
 		if not self_.Tabs[name] then return end
@@ -1396,6 +1654,13 @@ function Acursive:CreateWindow(opts)
 		end
 	end))
 
+	if self_.FocusModeEnabled then
+		self_.FocusActive = true
+		task.defer(function()
+			FocusMode:Enable()
+		end)
+	end
+
 	return self_
 end
 
@@ -1413,6 +1678,10 @@ function WindowClass:Destroy()
 	pcall(function() if self_.Main then self_.Main:Destroy() end end)
 	for i = #trackedWindows, 1, -1 do
 		if trackedWindows[i] == self_ then table.remove(trackedWindows, i) end
+	end
+	if self_.FocusActive then
+		self_.FocusActive = false
+		FocusMode:Disable()
 	end
 end
 
@@ -1953,7 +2222,8 @@ function TabClass:CreateSection(title, order)
 			tween(wrap, 0.25, { Size = UDim2.new(1, 0, 0, 22) }, Enum.EasingStyle.Quart)
 		end
 
-		local function makeOption(opt, i)
+		local makeOption
+		makeOption = function(opt, i)
 			local o = Instance.new("TextButton")
 			o.Size = UDim2.new(1, 0, 0, 20)
 			o.BackgroundColor3 = Palette.Panel
@@ -2013,6 +2283,19 @@ function TabClass:CreateSection(title, order)
 				for i, opt in ipairs(options) do makeOption(opt, i) end
 				if expanded then
 					wrap.Size = UDim2.new(1, 0, 0, 22 + #options * 20)
+				end
+			end,
+			Refresh = function(newOpts)
+				if newOpts then
+					for _, c in ipairs(bodyFrame:GetChildren()) do
+						if c:IsA("TextButton") then c:Destroy() end
+					end
+					options = newOpts
+					bodyFrame.Size = UDim2.new(1, 0, 0, #options * 20)
+					for i, opt in ipairs(options) do makeOption(opt, i) end
+					if expanded then
+						wrap.Size = UDim2.new(1, 0, 0, 22 + #options * 20)
+					end
 				end
 			end,
 			SetVisible = function(v) wrap.Visible = v end,
