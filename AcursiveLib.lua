@@ -1,42 +1,6 @@
---[[
-╭──────────────────────────────────────────────────────────────────────────╮
-│                                                                          │
-│   ▄▀█ █▀▀ █░█ █▀█ █▀ █ █ █▀▀   █░█ █   █░░ █ █▄▄ █▀█ ▄▀█ █▀█ █▄█          │
-│   █▀█ █▄▄ █▄█ █▀▄ ▄█ ▀▄▀ ██▄   █▄█ █▄▄ █▄▄ █ █▄█ █▀▄ █▀█ █▀▄ ░█░          │
-│                                                                          │
-│   Created by Yera · Version 2.0.0                                        │
-│                                                                          │
-│   A modern, lightweight Roblox UI library for building clean             │
-│   cheat / utility menus.                                                 │
-│                                                                          │
-│   Features:                                                              │
-│     ✦ Multi-window + multi-tab layout                                    │
-│     ✦ Sections with titles                                               │
-│     ✦ Huge control set (toggles, sliders, dropdowns, color pickers,     │
-│       keybinds, textboxes, progress bars, steppers, radios, and MORE)   │
-│     ✦ Live theme switching (10 themes + RGB cycling)                    │
-│     ✦ Config saving / loading                                           │
-│     ✦ Notifications with progress bars                                  │
-│     ✦ Dockable panels (pop a tab into its own floating window)          │
-│     ✦ Focus mode (blurs + hides other GUI while the menu is open)       │
-│     ✦ Global search / filter box on every tab                           │
-│     ✦ A tiny keybind registry for global hotkeys                        │
-│                                                                          │
-│   Every function is documented with simple English comments so          │
-│   anyone can extend it or learn from it.                                │
-│                                                                          │
-╰──────────────────────────────────────────────────────────────────────────╯
---]]
-
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  MODULE SETUP
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-
--- Main library table. Everything lives on this.
 local Acursive = {}
 Acursive.__index = Acursive
 
--- Cached service references (faster than calling GetService repeatedly).
 local Players          = game:GetService("Players")
 local CoreGui          = game:GetService("CoreGui")
 local TweenService     = game:GetService("TweenService")
@@ -46,14 +10,8 @@ local HttpService      = game:GetService("HttpService")
 local Lighting         = game:GetService("Lighting")
 local StarterGui       = game:GetService("StarterGui")
 
--- Local player shortcut.
 local LocalPlayer = Players.LocalPlayer
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  THEMES
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
--- Each theme has a primary accent color and a lighter tint of it.
--- Add your own by inserting a new entry with the same shape.
 local THEMES = {
     Orange = { primary = Color3.fromRGB(255, 140, 50),  light = Color3.fromRGB(255, 240, 225) },
     Blue   = { primary = Color3.fromRGB(80, 160, 255),  light = Color3.fromRGB(220, 240, 255) },
@@ -67,10 +25,6 @@ local THEMES = {
     Dark   = { primary = Color3.fromRGB(90, 90, 100),   light = Color3.fromRGB(150, 150, 160) },
 }
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  COLOR PALETTE
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
--- The dark grayscale base colors used throughout the UI.
 local Palette = {
     Panel      = Color3.fromRGB(14, 14, 14),
     Row        = Color3.fromRGB(20, 20, 20),
@@ -85,36 +39,28 @@ local Palette = {
     Dark       = Color3.fromRGB(10, 10, 10),
 }
 
--- Public data (external scripts may read these).
 Acursive.Themes  = THEMES
 Acursive.Palette = Palette
-Acursive.Version = "2.0.0"
+Acursive.Version = "2.1.0"
 Acursive.Author  = "Yera"
 
--- Current theme state.
 local Accent       = THEMES.Orange.primary
 local AccentLight  = THEMES.Orange.light
 local CurrentTheme = "Orange"
 local RGBMode      = false
 local RGBHue       = 0
 
--- Global tracking tables.
-local accentTargets     = {}   -- things to recolor on theme change
-local accentGradients   = {}   -- gradients that shimmer
-local activeKeybinds    = {}   -- { {key=KeyCode, callback=fn}, ... }
-local keyCapture        = nil  -- when set, the next keypress goes to this fn
-local trackedConnections = {}  -- every connection we made
-local trackedThreads     = {}  -- every task we spawned
-local trackedWindows     = {}  -- every Window object
-local screenGui                -- main ScreenGui (lazy created)
-local notifContainer           -- notification stack container
-local notifCounter = 0         -- layout order counter for notifications
+local accentTargets      = {}
+local accentGradients    = {}
+local activeKeybinds     = {}
+local keyCapture         = nil
+local trackedConnections = {}
+local trackedThreads     = {}
+local trackedWindows     = {}
+local screenGui
+local notifContainer
+local notifCounter = 0
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  FOCUS MODE
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
--- Focus mode blurs the background, drops the FOV, hides other GUIs,
--- and shows drifting particles while the window is open.
 local FocusMode = {
     Active             = false,
     BlurEffect         = nil,
@@ -128,29 +74,21 @@ local FocusMode = {
     Depth              = 0,
 }
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  HELPERS
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-
--- Convert any value to a safe string (never errors on nil).
 local function tostr(v)
     if v == nil then return "" end
     return tostring(v)
 end
 
--- Remember a connection for later cleanup.
 local function track(conn)
     if conn then table.insert(trackedConnections, conn) end
     return conn
 end
 
--- Remember a task for later cleanup.
 local function trackThread(t)
     if t then table.insert(trackedThreads, t) end
     return t
 end
 
--- Call a user callback safely (an error in one callback won't kill the UI).
 local function safeCall(fn, ...)
     if type(fn) ~= "function" then return false end
     local ok, err = pcall(fn, ...)
@@ -158,12 +96,10 @@ local function safeCall(fn, ...)
     return ok
 end
 
--- Is the user currently typing in a textbox?
 local function isTyping()
     return UserInputService:GetFocusedTextBox() ~= nil
 end
 
--- Tween helper. Returns the Tween object.
 local function tween(inst, time, props, style, dir)
     if not inst or not inst.Parent then return nil end
     local t = TweenService:Create(
@@ -179,17 +115,14 @@ local function tween(inst, time, props, style, dir)
     return t
 end
 
--- Register an instance + property to be recolored on theme change.
 local function registerAccent(inst, prop)
     table.insert(accentTargets, { inst = inst, prop = prop or "BackgroundColor3" })
 end
 
--- Register a custom function to run on theme change.
 local function registerAccentFn(fn)
     table.insert(accentTargets, { apply = fn })
 end
 
--- Apply a new accent color across every registered element.
 local function applyAccent(color, light)
     Accent = color
     AccentLight = light or color:Lerp(Color3.new(1, 1, 1), 0.7)
@@ -215,7 +148,6 @@ local function applyAccent(color, light)
     end
 end
 
--- Create a gradient that shimmers with the accent color.
 local function makeAccentGradient(parent)
     local grad = Instance.new("UIGradient")
     grad.Color = ColorSequence.new({
@@ -228,10 +160,6 @@ local function makeAccentGradient(parent)
     return grad
 end
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  PUBLIC GETTERS / SETTERS
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-
 function Acursive:GetAccent()   return Accent end
 function Acursive:GetTheme()    return CurrentTheme end
 function Acursive:IsRGB()       return RGBMode end
@@ -239,14 +167,12 @@ function Acursive:GetRegistry() return activeKeybinds end
 function Acursive:GetVersion()  return Acursive.Version end
 function Acursive:GetAuthor()   return Acursive.Author end
 
--- Manually set the accent color (turns off RGB and current theme).
 function Acursive:SetAccent(color, light)
     RGBMode = false
     CurrentTheme = nil
     applyAccent(color, light)
 end
 
--- Switch to a named theme.
 function Acursive:SetTheme(name)
     local t = THEMES[name]
     if not t then return end
@@ -255,16 +181,10 @@ function Acursive:SetTheme(name)
     applyAccent(t.primary, t.light)
 end
 
--- Turn RGB cycling on or off.
 function Acursive:SetRGB(enabled)
     RGBMode = enabled and true or false
 end
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  FOCUS MODE INTERNALS
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-
--- Where do we parent temporary GUI like the focus particles?
 local function particleHost()
     if screenGui and screenGui.Parent then
         return screenGui.Parent
@@ -279,7 +199,6 @@ local function particleHost()
     return LocalPlayer:WaitForChild("PlayerGui")
 end
 
--- Build the drifting particle field.
 function FocusMode:_CreateParticles()
     if self.ParticleGui then return end
     local host = particleHost()
@@ -340,7 +259,6 @@ function FocusMode:_CreateParticles()
     end)
 end
 
--- Tear down the particles.
 function FocusMode:_DestroyParticles()
     if self.ParticleConnection then
         pcall(function() self.ParticleConnection:Disconnect() end)
@@ -356,7 +274,6 @@ function FocusMode:_DestroyParticles()
     end
 end
 
--- Hide every other GUI on screen.
 function FocusMode:_HideGuis()
     local pg = LocalPlayer:FindFirstChild("PlayerGui")
     if pg then
@@ -399,7 +316,6 @@ function FocusMode:_HideGuis()
     end
 end
 
--- Restore everything we hid.
 function FocusMode:_RestoreGuis()
     for child in pairs(self.HiddenPlayerGui) do
         if child and child.Parent then
@@ -421,7 +337,6 @@ function FocusMode:_RestoreGuis()
     table.clear(self.CoreGuiStates)
 end
 
--- Turn focus mode on (nested calls are counted).
 function FocusMode:Enable()
     self.Depth = self.Depth + 1
     if self.Active then return end
@@ -454,7 +369,6 @@ function FocusMode:Enable()
     self:_HideGuis()
 end
 
--- Turn focus mode off (or decrement the nesting depth).
 function FocusMode:Disable()
     self.Depth = self.Depth - 1
     if self.Depth > 0 then return end
@@ -491,7 +405,6 @@ function FocusMode:Disable()
     self:_RestoreGuis()
 end
 
--- Public focus mode toggle.
 function Acursive:SetFocusMode(enabled)
     if enabled then FocusMode:Enable() else FocusMode:Disable() end
 end
@@ -500,11 +413,6 @@ function Acursive:GetFocusMode()
     return FocusMode.Active
 end
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  CLEANUP
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-
--- Remove everything we ever created.
 function Acursive:Cleanup()
     for _, c in ipairs(trackedConnections) do
         pcall(function()
@@ -538,11 +446,6 @@ end
 
 function Acursive:Destroy() self:Cleanup() end
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  GLOBAL INPUT
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-
--- Handle keybinds + key capture.
 track(UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -564,7 +467,6 @@ track(UserInputService.InputBegan:Connect(function(input, processed)
     end
 end))
 
--- Gradient shimmer + RGB cycling.
 track(RunService.Heartbeat:Connect(function(dt)
     local t = tick()
     local offset = ((t * 0.35) % 2) - 1
@@ -578,11 +480,6 @@ track(RunService.Heartbeat:Connect(function(dt)
     end
 end))
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  SCREEN GUI
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-
--- Creates (once) and returns the main ScreenGui.
 local function getScreenGui()
     if screenGui and screenGui.Parent then return screenGui end
     local sg = Instance.new("ScreenGui")
@@ -606,7 +503,6 @@ local function getScreenGui()
     return sg
 end
 
--- Creates (once) and returns the notification stack.
 local function getNotifContainer()
     if notifContainer and notifContainer.Parent then return notifContainer end
     local sg = getScreenGui()
@@ -628,12 +524,6 @@ local function getNotifContainer()
     return c
 end
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  NOTIFICATIONS
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-
--- Show a toast notification in the bottom-right corner.
--- Options: { Title, Content, Duration, Accent }
 function Acursive:Notify(opts)
     if type(opts) == "string" then opts = { Title = opts } end
     opts = opts or {}
@@ -743,24 +633,15 @@ function Acursive:Notify(opts)
     return notif
 end
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  CLASS DEFINITIONS
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-
 local WindowClass  = {}; WindowClass.__index  = WindowClass
 local SectionClass = {}; SectionClass.__index = SectionClass
 local TabClass     = {}; TabClass.__index     = TabClass
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  DOCK MANAGER
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
--- Lets you "pop out" a tab into a floating panel on the side of the screen.
 local DockManager = {}
 DockManager.panels     = {}
 DockManager.containers = {}
 DockManager.resize     = { active = nil, startY = 0, startH = 0 }
 
--- Get or create the container for a side ("left" or "right").
 function DockManager:getContainer(side)
     side = side or "right"
     if self.containers[side] and self.containers[side].Parent then
@@ -812,7 +693,6 @@ function DockManager:usedHeight(side)
     return h
 end
 
--- Pick whichever side has room for another panel.
 function DockManager:chooseSide()
     local vy = 800
     if workspace.CurrentCamera then
@@ -824,7 +704,6 @@ function DockManager:chooseSide()
     return "left"
 end
 
--- Dock a tab into a floating panel on the screen edge.
 function DockManager:dock(tab)
     if self:isDocked(tab) then return end
     local side = self:chooseSide()
@@ -906,14 +785,12 @@ function DockManager:dock(tab)
     contentWrap.ZIndex = 17
     contentWrap.Parent = panel
 
-    -- Move the tab's page into the docked panel.
     tab.Page.Parent = contentWrap
     tab.Page.Size = UDim2.new(1, 0, 1, 0)
     tab.Page.Visible = true
     tab.Page.ZIndex = 18
     tab.Docked = true
 
-    -- The little drag handle at the bottom for resizing.
     local resizeHandle = Instance.new("Frame")
     resizeHandle.Size = UDim2.new(1, 0, 0, 8)
     resizeHandle.Position = UDim2.new(0, 0, 1, -8)
@@ -966,7 +843,6 @@ function DockManager:dock(tab)
     tween(panel, 0.3, { Size = UDim2.new(1, 0, 0, 320) }, Enum.EasingStyle.Quart)
 end
 
--- Put the tab back inside the main window.
 function DockManager:undock(tab)
     for i, d in ipairs(self.panels) do
         if d.tab == tab then
@@ -1027,10 +903,6 @@ track(UserInputService.InputEnded:Connect(function(input)
     end
 end))
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  ICON LIBRARY
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
--- Small asset id shortcuts. You can add more at any time.
 Acursive.Icons = {
     Search   = "rbxassetid://118685771787843",
     Close    = "rbxassetid://118685771787843",
@@ -1038,11 +910,6 @@ Acursive.Icons = {
     Chevron  = "rbxassetid://118685771787843",
 }
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  VIEWPORT CHARACTER PREVIEW
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
--- Renders a spinning 3D copy of the local player's character inside a
--- ViewportFrame. Used by the built-in Profile tab.
 local function buildViewportCharacter(viewport)
     for _, c in ipairs(viewport:GetChildren()) do c:Destroy() end
 
@@ -1149,10 +1016,6 @@ local function buildViewportCharacter(viewport)
     return cam
 end
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  PROFILE PAGE BUILDER
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
--- The Profile tab shows the local player's info and a rotating preview.
 local function buildProfilePage(page, window)
     local viewWrap = Instance.new("Frame")
     viewWrap.Size = UDim2.new(1, 0, 0, 220)
@@ -1261,10 +1124,6 @@ local function buildProfilePage(page, window)
     end))
 end
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  NAV WIDTH CALCULATOR
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
--- Resizes the top tab bar so all tabs fit nicely across the top.
 local function computeNavWidth(window)
     local buttons = {}
     for _, c in ipairs(window.TabContainer:GetChildren()) do
@@ -1287,13 +1146,488 @@ local function computeNavWidth(window)
     return math.min(navW, maxNav), buttons
 end
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  WINDOW CREATION
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
--- Options:
---   Title, Subtitle, Theme, Size, Position, ToggleKey, ConfigFile,
---   Draggable, MinHeight, MaxHeight, ShowBranding, ShowProfile,
---   FocusMode, FocusFOVDrop, FocusBlur
+local function computeNavHeight(window)
+    local buttons = {}
+    for _, c in ipairs(window.TabContainer:GetChildren()) do
+        if c:IsA("TextButton") then table.insert(buttons, c) end
+    end
+    if #buttons == 0 then return nil, buttons end
+    local vh = 600
+    if workspace.CurrentCamera then
+        vh = workspace.CurrentCamera.ViewportSize.Y
+    end
+    local maxNav = math.min(vh - 100, 700)
+    local pad = 4
+    local containerPad = 20
+    local n = #buttons
+    local perTab = math.clamp((maxNav - containerPad - (n - 1) * pad) / n, 40, 80)
+    for _, b in ipairs(buttons) do
+        b.Size = UDim2.new(0, perTab, 0, 22)
+    end
+    local navH = n * perTab + (n - 1) * pad + containerPad
+    return math.min(navH, maxNav), buttons
+end
+
+local WheelNav = {}
+WheelNav.__index = WheelNav
+
+function WheelNav.new(window, side)
+    local self = setmetatable({}, WheelNav)
+    self.Window = window
+    self.Side = side
+    self.Buttons = {}
+    self.FocusIndex = 1
+    self.Hovered = false
+    self.Expanded = false
+    self._selectedName = nil
+
+    local sg = getScreenGui()
+    local wrap = Instance.new("Frame")
+    wrap.Name = "WheelNav_" .. side
+    wrap.BackgroundColor3 = Palette.Dark
+    wrap.BackgroundTransparency = 0.15
+    wrap.BorderSizePixel = 0
+    wrap.ClipsDescendants = true
+    wrap.ZIndex = 40
+
+    if side == "Left" then
+        wrap.AnchorPoint = Vector2.new(0, 0.5)
+        wrap.Position = UDim2.new(0, 8, 0.5, 0)
+    else
+        wrap.AnchorPoint = Vector2.new(1, 0.5)
+        wrap.Position = UDim2.new(1, -8, 0.5, 0)
+    end
+
+    wrap.Size = UDim2.new(0, 12, 0, 60)
+    wrap.Parent = sg
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = wrap
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Palette.Outline
+    stroke.Thickness = 1
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = wrap
+
+    local hintBar = Instance.new("Frame")
+    hintBar.Name = "HintBar"
+    hintBar.AnchorPoint = Vector2.new(0.5, 0.5)
+    hintBar.Size = UDim2.new(0, 2, 0, 22)
+    hintBar.Position = UDim2.new(0.5, 0, 0.5, 0)
+    hintBar.BackgroundColor3 = Accent
+    hintBar.BorderSizePixel = 0
+    hintBar.Parent = wrap
+    registerAccent(hintBar)
+
+    local hintCorner = Instance.new("UICorner")
+    hintCorner.CornerRadius = UDim.new(1, 0)
+    hintCorner.Parent = hintBar
+
+    local container = Instance.new("Frame")
+    container.Name = "Container"
+    container.Size = UDim2.new(1, 0, 1, 0)
+    container.BackgroundTransparency = 1
+    container.ClipsDescendants = true
+    container.Parent = wrap
+
+    self.Wrap = wrap
+    self.Stroke = stroke
+    self.HintBar = hintBar
+    self.Container = container
+    self.Corner = corner
+
+    track(wrap.MouseEnter:Connect(function()
+        self:SetHovered(true)
+    end))
+    track(wrap.MouseLeave:Connect(function()
+        task.defer(function()
+            if not self:_isMouseInside() then
+                self:SetHovered(false)
+            end
+        end)
+    end))
+
+    return self
+end
+
+function WheelNav:_isMouseInside()
+    local m = UserInputService:GetMouseLocation()
+    local ap = self.Wrap.AbsolutePosition
+    local as = self.Wrap.AbsoluteSize
+    return m.X >= ap.X and m.X <= ap.X + as.X
+       and m.Y >= ap.Y and m.Y <= ap.Y + as.Y
+end
+
+function WheelNav:AddButton(name, order)
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.AnchorPoint = Vector2.new(0.5, 0.5)
+    btn.Position = UDim2.new(0.5, 0, 0.5, 0)
+    btn.Size = UDim2.new(0, 0, 0, 20)
+    btn.BackgroundColor3 = Palette.Row
+    btn.BackgroundTransparency = 1
+    btn.BorderSizePixel = 0
+    btn.Text = name
+    btn.TextColor3 = Palette.Muted
+    btn.TextSize = 11
+    btn.Font = Enum.Font.GothamMedium
+    btn.AutoButtonColor = false
+    btn.TextTransparency = 1
+    btn.ZIndex = 45
+    btn.LayoutOrder = order
+    btn.Parent = self.Container
+
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 3)
+    btnCorner.Parent = btn
+
+    table.insert(self.Buttons, { name = name, button = btn, order = order })
+    table.sort(self.Buttons, function(a, b) return a.order < b.order end)
+
+    track(btn.MouseEnter:Connect(function()
+        local idx
+        for i, e in ipairs(self.Buttons) do
+            if e.button == btn then idx = i break end
+        end
+        if idx then self:SetFocus(idx, false) end
+    end))
+
+    track(btn.MouseButton1Click:Connect(function()
+        local now = tick()
+        if self._lastClick and now - self._lastClick < 0.3 then
+            self._lastClick = 0
+            local tab = self.Window.TabObjects[name]
+            if tab then DockManager:toggle(tab) end
+        else
+            self._lastClick = now
+            self.Window:SelectTab(name)
+            self:SetSelected(name)
+        end
+    end))
+
+    return btn
+end
+
+function WheelNav:SetSelected(name)
+    self._selectedName = name
+    for i, e in ipairs(self.Buttons) do
+        if e.name == name then
+            self:SetFocus(i, true)
+            break
+        end
+    end
+end
+
+function WheelNav:SetFocus(index, animate)
+    if #self.Buttons == 0 then return end
+    self.FocusIndex = math.clamp(index, 1, #self.Buttons)
+    self:_layout(animate ~= false)
+end
+
+function WheelNav:SetHovered(hovered)
+    if self.Hovered == hovered then return end
+    self.Hovered = hovered
+    self.Expanded = hovered
+    self:_layout(true)
+end
+
+function WheelNav:_layout(animate)
+    local n = #self.Buttons
+    if n == 0 then return end
+
+    local spacing = 34
+    local focus = self.FocusIndex
+
+    if self.Expanded then
+        local vh = 600
+        if workspace.CurrentCamera then
+            vh = workspace.CurrentCamera.ViewportSize.Y
+        end
+        local expandedH = math.clamp(n * 26 + 40, 130, math.min(vh - 80, 420))
+        self.Wrap.ClipsDescendants = false
+        tween(self.Wrap, 0.45, {
+            Size = UDim2.new(0, 170, 0, expandedH),
+            BackgroundTransparency = 0,
+        }, Enum.EasingStyle.Quart)
+        tween(self.HintBar, 0.3, { BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0) })
+        tween(self.Stroke, 0.4, { Color = Accent })
+    else
+        self.Wrap.ClipsDescendants = true
+        tween(self.Wrap, 0.35, {
+            Size = UDim2.new(0, 12, 0, 60),
+            BackgroundTransparency = 0.15,
+        }, Enum.EasingStyle.Quart)
+        tween(self.HintBar, 0.3, { BackgroundTransparency = 0, Size = UDim2.new(0, 2, 0, 22) })
+        tween(self.Stroke, 0.4, { Color = Palette.Outline })
+    end
+
+    for i, e in ipairs(self.Buttons) do
+        local offset = i - focus
+        local absOff = math.abs(offset)
+        local scale = math.max(0.35, 1 - absOff * 0.18)
+        local y = offset * spacing
+        local targetH = 26 * scale
+        local targetW = math.clamp(140 * scale, 30, 150)
+        local alpha = math.clamp(1 - absOff * 0.22, 0.12, 1)
+        local selected = (self._selectedName == e.name)
+
+        if self.Expanded then
+            tween(e.button, 0.42, {
+                Position = UDim2.new(0.5, 0, 0.5, y),
+                Size = UDim2.new(0, targetW, 0, targetH),
+                TextTransparency = 1 - alpha,
+                BackgroundTransparency = 1 - (alpha * 0.85),
+                TextColor3 = selected and Accent or Palette.Text,
+                TextSize = math.clamp(11 * scale + 2, 9, 14),
+            }, Enum.EasingStyle.Quart)
+        else
+            tween(e.button, 0.3, {
+                Position = UDim2.new(0.5, 0, 0.5, 0),
+                Size = UDim2.new(0, 0, 0, targetH),
+                TextTransparency = 1,
+                BackgroundTransparency = 1,
+            }, Enum.EasingStyle.Quart)
+        end
+    end
+end
+
+function WheelNav:UpdateNavSize() end
+
+function WheelNav:Refresh()
+    self:_layout(true)
+end
+
+function WheelNav:Destroy()
+    if self.Wrap then pcall(function() self.Wrap:Destroy() end) end
+end
+
+local BarNav = {}
+BarNav.__index = BarNav
+
+function BarNav.new(window, position)
+    local self = setmetatable({}, BarNav)
+    self.Window = window
+    self.Position = position
+    self.Buttons = {}
+
+    local sg = getScreenGui()
+    local wrap = Instance.new("Frame")
+    wrap.Name = "BarNav_" .. position
+    wrap.BackgroundColor3 = Palette.Dark
+    wrap.BackgroundTransparency = 1
+    wrap.BorderSizePixel = 0
+    wrap.ZIndex = 40
+
+    if position == "Top" then
+        wrap.AnchorPoint = Vector2.new(0.5, 0)
+        wrap.Position = UDim2.new(0.5, 0, 0, -50)
+        wrap.Size = UDim2.new(0, 480, 0, 30)
+    else
+        wrap.AnchorPoint = Vector2.new(0.5, 1)
+        wrap.Position = UDim2.new(0.5, 0, 1, 50)
+        wrap.Size = UDim2.new(0, 480, 0, 30)
+    end
+    wrap.Parent = sg
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 3)
+    corner.Parent = wrap
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Palette.Outline
+    stroke.Thickness = 1
+    stroke.Transparency = 1
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = wrap
+
+    local shadow = Instance.new("UIStroke")
+    shadow.Color = Palette.Shadow
+    shadow.Thickness = 1
+    shadow.Transparency = 1
+    shadow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    shadow.Parent = wrap
+
+    local accentLine = Instance.new("Frame")
+    if position == "Top" then
+        accentLine.AnchorPoint = Vector2.new(0.5, 0)
+        accentLine.Size = UDim2.new(0, 60, 0, 1)
+        accentLine.Position = UDim2.new(0.5, 0, 0, 0)
+    else
+        accentLine.AnchorPoint = Vector2.new(0.5, 1)
+        accentLine.Size = UDim2.new(0, 60, 0, 1)
+        accentLine.Position = UDim2.new(0.5, 0, 1, 0)
+    end
+    accentLine.BackgroundColor3 = Accent
+    accentLine.BorderSizePixel = 0
+    accentLine.Parent = wrap
+    registerAccent(accentLine)
+
+    local glow = Instance.new("Frame")
+    glow.Size = UDim2.new(1, 0, 0, 1)
+    if position == "Top" then
+        glow.Position = UDim2.new(0, 0, 0, 1)
+    else
+        glow.Position = UDim2.new(0, 0, 1, -1)
+    end
+    glow.BackgroundColor3 = Accent
+    glow.BackgroundTransparency = 0.5
+    glow.BorderSizePixel = 0
+    glow.Parent = wrap
+    registerAccent(glow)
+
+    local tabContainer = Instance.new("Frame")
+    tabContainer.Size = UDim2.new(1, -20, 1, 0)
+    tabContainer.Position = UDim2.new(0, 10, 0, 0)
+    tabContainer.BackgroundTransparency = 1
+    tabContainer.Parent = wrap
+
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.VerticalAlignment = Enum.VerticalAlignment.Center
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 4)
+    layout.Parent = tabContainer
+
+    local indicator = Instance.new("Frame")
+    indicator.AnchorPoint = Vector2.new(0.5, 1)
+    indicator.Size = UDim2.new(0, 0, 0, 2)
+    if position == "Top" then
+        indicator.Position = UDim2.new(0, 0, 1, -2)
+    else
+        indicator.AnchorPoint = Vector2.new(0.5, 0)
+        indicator.Position = UDim2.new(0, 0, 0, 2)
+    end
+    indicator.BackgroundColor3 = Accent
+    indicator.BorderSizePixel = 0
+    indicator.ZIndex = 3
+    indicator.Visible = false
+    indicator.Parent = wrap
+    registerAccent(indicator)
+
+    self.Wrap = wrap
+    self.Stroke = stroke
+    self.Shadow = shadow
+    self.TabContainer = tabContainer
+    self.Indicator = indicator
+    self.AccentLine = accentLine
+    self.Glow = glow
+
+    makeAccentGradient(accentLine)
+    makeAccentGradient(indicator)
+
+    return self
+end
+
+function BarNav:AddButton(name, order)
+    local window = self.Window
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, window.TabWidth, 0, 22)
+    btn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    btn.BackgroundTransparency = 1
+    btn.BorderSizePixel = 0
+    btn.Text = name
+    btn.TextColor3 = Palette.Muted
+    btn.TextSize = 11
+    btn.Font = Enum.Font.GothamMedium
+    btn.AutoButtonColor = false
+    btn.LayoutOrder = order
+    btn.TextTruncate = Enum.TextTruncate.AtEnd
+    btn.Parent = self.TabContainer
+
+    track(btn.MouseEnter:Connect(function()
+        if window.CurrentTab ~= name then
+            tween(btn, 0.15, { TextColor3 = Palette.Text })
+        end
+    end))
+    track(btn.MouseLeave:Connect(function()
+        if window.CurrentTab ~= name then
+            tween(btn, 0.15, { TextColor3 = Palette.Muted })
+        end
+    end))
+
+    local lastClick = 0
+    track(btn.MouseButton1Click:Connect(function()
+        local now = tick()
+        if now - lastClick < 0.3 then
+            lastClick = 0
+            local tab = window.TabObjects[name]
+            if tab then DockManager:toggle(tab) end
+        else
+            lastClick = now
+            window:SelectTab(name)
+        end
+    end))
+
+    return btn
+end
+
+function BarNav:UpdateIndicator(name)
+    local window = self.Window
+    local btn = window.Tabs[name]
+    if not btn then return end
+    self.Indicator.Visible = true
+    if self.Position == "Top" then
+        local relX = btn.AbsolutePosition.X - self.Wrap.AbsolutePosition.X + btn.AbsoluteSize.X / 2
+        tween(self.Indicator, 0.25, {
+            Position = UDim2.new(0, relX, 1, -2),
+            Size = UDim2.new(0, btn.AbsoluteSize.X - 14, 0, 2),
+        }, Enum.EasingStyle.Quart)
+    else
+        local relX = btn.AbsolutePosition.X - self.Wrap.AbsolutePosition.X + btn.AbsoluteSize.X / 2
+        tween(self.Indicator, 0.25, {
+            Position = UDim2.new(0, relX, 0, 2),
+            Size = UDim2.new(0, btn.AbsoluteSize.X - 14, 0, 2),
+        }, Enum.EasingStyle.Quart)
+    end
+end
+
+function BarNav:UpdateNavSize()
+    local navW, _ = computeNavWidth(self.Window)
+    if navW then
+        self.Wrap.Size = UDim2.new(0, navW, 0, 30)
+    end
+end
+
+function BarNav:Show()
+    if self.Position == "Top" then
+        tween(self.Wrap, 0.55, {
+            Position = UDim2.new(0.5, 0, 0, 14),
+            BackgroundTransparency = 0,
+        }, Enum.EasingStyle.Quart)
+    else
+        tween(self.Wrap, 0.55, {
+            Position = UDim2.new(0.5, 0, 1, -14),
+            BackgroundTransparency = 0,
+        }, Enum.EasingStyle.Quart)
+    end
+    tween(self.Stroke, 0.55, { Transparency = 0 })
+    tween(self.Shadow, 0.55, { Transparency = 0.3 })
+end
+
+function BarNav:Hide()
+    if self.Position == "Top" then
+        tween(self.Wrap, 0.4, {
+            Position = UDim2.new(0.5, 0, 0, -50),
+            BackgroundTransparency = 1,
+        }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+    else
+        tween(self.Wrap, 0.4, {
+            Position = UDim2.new(0.5, 0, 1, 50),
+            BackgroundTransparency = 1,
+        }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+    end
+    tween(self.Stroke, 0.4, { Transparency = 1 })
+    tween(self.Shadow, 0.4, { Transparency = 1 })
+    self.Indicator.Visible = false
+end
+
+function BarNav:Destroy()
+    if self.Wrap then pcall(function() self.Wrap:Destroy() end) end
+end
+
 function Acursive:CreateWindow(opts)
     opts = opts or {}
     local self_ = setmetatable({}, WindowClass)
@@ -1314,6 +1648,12 @@ function Acursive:CreateWindow(opts)
     self_.FocusModeEnabled = opts.FocusMode ~= false
     self_.FocusFOVDrop   = opts.FocusFOVDrop or 15
     self_.FocusBlur      = opts.FocusBlur or 14
+    self_.NavPosition    = opts.NavPosition or "Top"
+
+    local validPositions = { Top = true, Left = true, Right = true, Bottom = true }
+    if not validPositions[self_.NavPosition] then
+        self_.NavPosition = "Top"
+    end
 
     self_.Pages          = {}
     self_.Tabs           = {}
@@ -1334,82 +1674,20 @@ function Acursive:CreateWindow(opts)
     local sg = getScreenGui()
     self_.ScreenGui = sg
 
-    --▸ Top navigation bar
-    local NavWrap = Instance.new("Frame")
-    NavWrap.Name = "TopNav"
-    NavWrap.AnchorPoint = Vector2.new(0.5, 0)
-    NavWrap.Position = UDim2.new(0.5, 0, 0, -50)
-    NavWrap.Size = UDim2.new(0, 480, 0, 30)
-    NavWrap.BackgroundColor3 = Palette.Dark
-    NavWrap.BackgroundTransparency = 1
-    NavWrap.BorderSizePixel = 0
-    NavWrap.Parent = sg
-    self_.NavWrap = NavWrap
+    local nav
+    if self_.NavPosition == "Top" or self_.NavPosition == "Bottom" then
+        nav = BarNav.new(self_, self_.NavPosition)
+    else
+        nav = WheelNav.new(self_, self_.NavPosition)
+    end
+    self_.Nav = nav
 
-    local NavCorner = Instance.new("UICorner")
-    NavCorner.CornerRadius = UDim.new(0, 3)
-    NavCorner.Parent = NavWrap
+    if nav.TabContainer then
+        self_.TabContainer = nav.TabContainer
+    else
+        self_.TabContainer = nav.Container
+    end
 
-    local NavStroke = Instance.new("UIStroke")
-    NavStroke.Color = Palette.Outline
-    NavStroke.Thickness = 1
-    NavStroke.Transparency = 1
-    NavStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    NavStroke.Parent = NavWrap
-
-    local NavShadow = Instance.new("UIStroke")
-    NavShadow.Color = Palette.Shadow
-    NavShadow.Thickness = 1
-    NavShadow.Transparency = 1
-    NavShadow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    NavShadow.Parent = NavWrap
-
-    local NavAccent = Instance.new("Frame")
-    NavAccent.AnchorPoint = Vector2.new(0.5, 0)
-    NavAccent.Size = UDim2.new(0, 60, 0, 1)
-    NavAccent.Position = UDim2.new(0.5, 0, 0, 0)
-    NavAccent.BackgroundColor3 = Accent
-    NavAccent.BorderSizePixel = 0
-    NavAccent.Parent = NavWrap
-    registerAccent(NavAccent)
-
-    local NavGlow = Instance.new("Frame")
-    NavGlow.Size = UDim2.new(1, 0, 0, 1)
-    NavGlow.Position = UDim2.new(0, 0, 0, 1)
-    NavGlow.BackgroundColor3 = Accent
-    NavGlow.BackgroundTransparency = 0.5
-    NavGlow.BorderSizePixel = 0
-    NavGlow.Parent = NavWrap
-    registerAccent(NavGlow)
-
-    local TabContainer = Instance.new("Frame")
-    TabContainer.Size = UDim2.new(1, -20, 1, 0)
-    TabContainer.Position = UDim2.new(0, 10, 0, 0)
-    TabContainer.BackgroundTransparency = 1
-    TabContainer.Parent = NavWrap
-    self_.TabContainer = TabContainer
-
-    local TabLayout = Instance.new("UIListLayout")
-    TabLayout.FillDirection = Enum.FillDirection.Horizontal
-    TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    TabLayout.Padding = UDim.new(0, 4)
-    TabLayout.Parent = TabContainer
-
-    local TabIndicator = Instance.new("Frame")
-    TabIndicator.AnchorPoint = Vector2.new(0.5, 1)
-    TabIndicator.Size = UDim2.new(0, 0, 0, 2)
-    TabIndicator.Position = UDim2.new(0, 0, 1, -2)
-    TabIndicator.BackgroundColor3 = Accent
-    TabIndicator.BorderSizePixel = 0
-    TabIndicator.ZIndex = 3
-    TabIndicator.Visible = false
-    TabIndicator.Parent = NavWrap
-    registerAccent(TabIndicator)
-    self_.TabIndicator = TabIndicator
-
-    --▸ Main window body
     local Main = Instance.new("Frame")
     Main.Name = "Main"
     Main.Size = UDim2.new(0, self_.Size.X.Offset, 0, 0)
@@ -1418,6 +1696,7 @@ function Acursive:CreateWindow(opts)
     Main.BackgroundTransparency = 1
     Main.BorderSizePixel = 0
     Main.ClipsDescendants = true
+    Main.ZIndex = 20
     Main.Parent = sg
     self_.Main = Main
 
@@ -1428,6 +1707,7 @@ function Acursive:CreateWindow(opts)
     DragBar.Position = UDim2.new(0.5, 0, 0, 4)
     DragBar.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     DragBar.BorderSizePixel = 0
+    DragBar.ZIndex = 21
     DragBar.Parent = Main
     self_.DragBar = DragBar
 
@@ -1447,10 +1727,10 @@ function Acursive:CreateWindow(opts)
     Content.Position = UDim2.new(0, 0, 0, self_.HeaderHeight)
     Content.BackgroundTransparency = 1
     Content.ClipsDescendants = true
+    Content.ZIndex = 21
     Content.Parent = Main
     self_.Content = Content
 
-    --▸ Dragging
     if self_.Draggable then
         local dragging, dragStart, startPos = false, nil, nil
         track(DragBar.InputBegan:Connect(function(input)
@@ -1481,10 +1761,6 @@ function Acursive:CreateWindow(opts)
         end))
     end
 
-    makeAccentGradient(NavAccent)
-    makeAccentGradient(TabIndicator)
-
-    --▸ Public window methods
     function self_:GetConfigFile() return self_.ConfigFile end
 
     function self_:SaveConfig()
@@ -1555,26 +1831,31 @@ function Acursive:CreateWindow(opts)
         self_.Visible = true
         local targetH = computeHeight()
         Main.Visible = true
-        NavWrap.Visible = true
         for _, c in pairs(DockManager.containers) do
             if c and c.Parent then c.Visible = true end
         end
-        tween(Main, 0.55, {
-            Size = UDim2.new(0, self_.Size.X.Offset, 0, targetH),
-            Position = UDim2.new(0.5, 0, 0, 60),
-        }, Enum.EasingStyle.Quart)
-        tween(NavWrap, 0.55, {
-            Position = UDim2.new(0.5, 0, 0, 14),
-            BackgroundTransparency = 0,
-        }, Enum.EasingStyle.Quart)
-        tween(NavStroke, 0.55, { Transparency = 0 })
-        tween(NavShadow, 0.55, { Transparency = 0.3 })
-        if self_.CurrentTab and self_.Tabs[self_.CurrentTab] then
-            local t = self_.Tabs[self_.CurrentTab]
-            local relX = t.AbsolutePosition.X - NavWrap.AbsolutePosition.X + t.AbsoluteSize.X / 2
-            TabIndicator.Position = UDim2.new(0, relX, 1, -2)
-            TabIndicator.Size = UDim2.new(0, t.AbsoluteSize.X - 14, 0, 2)
-            TabIndicator.Visible = true
+        if self_.NavPosition == "Top" then
+            tween(Main, 0.55, {
+                Size = UDim2.new(0, self_.Size.X.Offset, 0, targetH),
+                Position = UDim2.new(0.5, 0, 0, 60),
+            }, Enum.EasingStyle.Quart)
+        elseif self_.NavPosition == "Bottom" then
+            tween(Main, 0.55, {
+                Size = UDim2.new(0, self_.Size.X.Offset, 0, targetH),
+                Position = UDim2.new(0.5, 0, 0, 60),
+            }, Enum.EasingStyle.Quart)
+        else
+            tween(Main, 0.55, {
+                Size = UDim2.new(0, self_.Size.X.Offset, 0, targetH),
+                Position = UDim2.new(0.5, 0, 0, 60),
+            }, Enum.EasingStyle.Quart)
+        end
+        if self_.Nav.Show then self_.Nav:Show() end
+        if self_.CurrentTab and self_.Tabs[self_.CurrentTab] and self_.Nav.UpdateIndicator then
+            self_.Nav:UpdateIndicator(self_.CurrentTab)
+        end
+        if self_.Nav.SetSelected then
+            self_.Nav:SetSelected(self_.CurrentTab)
         end
         if self_.FocusModeEnabled and not self_.FocusActive then
             self_.FocusActive = true
@@ -1589,13 +1870,7 @@ function Acursive:CreateWindow(opts)
             Size = UDim2.new(0, self_.Size.X.Offset, 0, 0),
             Position = UDim2.new(0.5, 0, 0, 40),
         }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-        tween(NavWrap, 0.4, {
-            Position = UDim2.new(0.5, 0, 0, -50),
-            BackgroundTransparency = 1,
-        }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-        tween(NavStroke, 0.4, { Transparency = 1 })
-        tween(NavShadow, 0.4, { Transparency = 1 })
-        TabIndicator.Visible = false
+        if self_.Nav.Hide then self_.Nav:Hide() end
         for _, c in pairs(DockManager.containers) do
             if c and c.Parent then c.Visible = false end
         end
@@ -1616,8 +1891,8 @@ function Acursive:CreateWindow(opts)
     function self_:SetSize(size)       self_.Size = size self_:Resize(true) end
     function self_:IsVisible()         return self_.Visible end
     function self_:SetFocusFOVDrop(v)  self_.FocusFOVDrop = v end
+    function self_:GetNavPosition()    return self_.NavPosition end
 
-    --▸ Tab switching
     function self_:SelectTab(name)
         if not self_.Tabs[name] then return end
         local tabObj = self_.TabObjects[name]
@@ -1629,13 +1904,8 @@ function Acursive:CreateWindow(opts)
                     tween(b, 0.2, { TextColor3 = Palette.Muted })
                 end
             end
-            local btn = self_.Tabs[name]
-            TabIndicator.Visible = true
-            local relX = btn.AbsolutePosition.X - NavWrap.AbsolutePosition.X + btn.AbsoluteSize.X / 2
-            tween(TabIndicator, 0.25, {
-                Position = UDim2.new(0, relX, 1, -2),
-                Size = UDim2.new(0, btn.AbsoluteSize.X - 14, 0, 2),
-            }, Enum.EasingStyle.Quart)
+            if self_.Nav.UpdateIndicator then self_.Nav:UpdateIndicator(name) end
+            if self_.Nav.SetSelected then self_.Nav:SetSelected(name) end
             self_.CurrentTab = name
             return
         end
@@ -1658,27 +1928,20 @@ function Acursive:CreateWindow(opts)
             end
         end
 
-        local btn = self_.Tabs[name]
-        TabIndicator.Visible = true
-        local relX = btn.AbsolutePosition.X - NavWrap.AbsolutePosition.X + btn.AbsoluteSize.X / 2
-        tween(TabIndicator, 0.25, {
-            Position = UDim2.new(0, relX, 1, -2),
-            Size = UDim2.new(0, btn.AbsoluteSize.X - 14, 0, 2),
-        }, Enum.EasingStyle.Quart)
+        if self_.Nav.UpdateIndicator then self_.Nav:UpdateIndicator(name) end
+        if self_.Nav.SetSelected then self_.Nav:SetSelected(name) end
 
         self_.CurrentTab = name
         self_:Resize(false)
         self_:SaveConfig()
     end
 
-    --▸ Create a tab
     function self_:CreateTab(name, order)
         if self_.Destroyed then return nil end
         name = tostr(name)
         self_.TabOrder = self_.TabOrder + 1
         local orderNum = order or self_.TabOrder
 
-        -- The scrollable page that holds every section.
         local page = Instance.new("ScrollingFrame")
         page.Name = name
         page.Size = UDim2.new(1, 0, 1, 0)
@@ -1689,6 +1952,7 @@ function Acursive:CreateWindow(opts)
         page.ScrollBarImageTransparency = 0.3
         page.Visible = false
         page.CanvasSize = UDim2.new(0, 0, 0, 0)
+        page.ZIndex = 22
         page.Parent = Content
         registerAccent(page, "ScrollBarImageColor3")
 
@@ -1705,14 +1969,12 @@ function Acursive:CreateWindow(opts)
         layout.Padding = UDim.new(0, 8)
         layout.Parent = page
 
-        --▸ SEARCH / FILTER BAR
-        -- A small search box at the top of every tab. Typing in it hides
-        -- any control whose label doesn't contain the typed text.
         local searchBar = Instance.new("Frame")
         searchBar.Size = UDim2.new(1, 0, 0, 26)
         searchBar.BackgroundColor3 = Palette.Row
         searchBar.BorderSizePixel = 0
         searchBar.LayoutOrder = -1
+        searchBar.ZIndex = 23
         searchBar.Parent = page
 
         local sbCorner = Instance.new("UICorner")
@@ -1758,13 +2020,11 @@ function Acursive:CreateWindow(opts)
         clearBtn.AutoButtonColor = false
         clearBtn.Parent = searchBar
 
-        -- Store all searchable rows on the tab so filtering can walk them.
         page:SetAttribute("SearchText", "")
 
         local function applyFilter(text)
             text = string.lower(text)
             page:SetAttribute("SearchText", text)
-            -- Walk every section and every row inside it.
             for _, secFrame in ipairs(page:GetChildren()) do
                 if secFrame:IsA("Frame") and secFrame ~= searchBar then
                     local body = secFrame:FindFirstChild("Body")
@@ -1774,7 +2034,6 @@ function Acursive:CreateWindow(opts)
                             if row:IsA("GuiObject") and row.LayoutOrder and row.LayoutOrder > 0 then
                                 local label = row:GetAttribute("RowLabel")
                                 if label == nil then
-                                    -- Try to pull a label from a TextLabel child.
                                     local tl = row:FindFirstChildWhichIsA("TextLabel", true)
                                     if tl then label = tl.Text end
                                 end
@@ -1792,7 +2051,6 @@ function Acursive:CreateWindow(opts)
                             end
                         end
                     end
-                    -- Hide the whole section header if nothing matched.
                     secFrame.Visible = (text == "") or anyVisible
                 end
             end
@@ -1815,40 +2073,15 @@ function Acursive:CreateWindow(opts)
             tween(searchIcon, 0.15, { ImageColor3 = Palette.Muted })
         end))
 
-        -- Resize the canvas when the layout changes.
         track(layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 14)
+            page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Size + 14)
             if self_.CurrentTab == name then self_:Resize(false) end
         end))
 
         self_.Pages[name] = page
 
-        -- Tab button in the top bar.
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, self_.TabWidth, 0, 22)
-        btn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-        btn.BackgroundTransparency = 1
-        btn.BorderSizePixel = 0
-        btn.Text = name
-        btn.TextColor3 = Palette.Muted
-        btn.TextSize = 11
-        btn.Font = Enum.Font.GothamMedium
-        btn.AutoButtonColor = false
-        btn.LayoutOrder = orderNum
-        btn.TextTruncate = Enum.TextTruncate.AtEnd
-        btn.Parent = TabContainer
+        local btn = self_.Nav:AddButton(name, orderNum)
         self_.Tabs[name] = btn
-
-        track(btn.MouseEnter:Connect(function()
-            if self_.CurrentTab ~= name then
-                tween(btn, 0.15, { TextColor3 = Palette.Text })
-            end
-        end))
-        track(btn.MouseLeave:Connect(function()
-            if self_.CurrentTab ~= name then
-                tween(btn, 0.15, { TextColor3 = Palette.Muted })
-            end
-        end))
 
         local tab = setmetatable({}, TabClass)
         tab.Window       = self_
@@ -1862,39 +2095,22 @@ function Acursive:CreateWindow(opts)
 
         self_.TabObjects[name] = tab
 
-        -- Click = select. Double-click = dock/undock.
-        local lastClick = 0
-        track(btn.MouseButton1Click:Connect(function()
-            local now = tick()
-            if now - lastClick < 0.3 then
-                lastClick = 0
-                DockManager:toggle(tab)
-            else
-                lastClick = now
-                self_:SelectTab(name)
-            end
-        end))
-
-        local navW = computeNavWidth(self_)
-        if navW then
-            NavWrap.Size = UDim2.new(0, navW, 0, 30)
-        end
+        if self_.Nav.UpdateNavSize then self_.Nav:UpdateNavSize() end
+        if self_.Nav.Refresh then self_.Nav:Refresh() end
 
         return tab
     end
 
-    -- Auto-select the first tab.
     if not self_.CurrentTab then
         trackThread(task.defer(function()
             local first
-            for _, b in ipairs(TabContainer:GetChildren()) do
+            for _, b in ipairs(self_.TabContainer:GetChildren()) do
                 if b:IsA("TextButton") then first = b break end
             end
             if first then self_:SelectTab(first.Text) end
         end))
     end
 
-    -- Handle the toggle hotkey (default: RightShift).
     if self_.ToggleKey then
         track(UserInputService.InputBegan:Connect(function(input, processed)
             if processed then return end
@@ -1911,23 +2127,15 @@ function Acursive:CreateWindow(opts)
         end))
     end
 
-    -- Recalculate the nav bar when the screen size changes.
     track(UserInputService.InputChanged:Connect(function()
-        local navW = computeNavWidth(self_)
-        if navW then
-            NavWrap.Size = UDim2.new(0, navW, 0, 30)
-            if self_.CurrentTab and self_.Tabs[self_.CurrentTab] then
-                local t = self_.Tabs[self_.CurrentTab]
-                local relX = t.AbsolutePosition.X - NavWrap.AbsolutePosition.X + t.AbsoluteSize.X / 2
-                TabIndicator.Position = UDim2.new(0, relX, 1, -2)
-                TabIndicator.Size = UDim2.new(0, t.AbsoluteSize.X - 14, 0, 2)
-            end
+        if self_.Nav.UpdateNavSize then self_.Nav:UpdateNavSize() end
+        if self_.CurrentTab and self_.Tabs[self_.CurrentTab] and self_.Nav.UpdateIndicator then
+            self_.Nav:UpdateIndicator(self_.CurrentTab)
         end
     end))
 
     table.insert(trackedWindows, self_)
 
-    -- Load config and play the intro animation.
     trackThread(task.spawn(function()
         RunService.RenderStepped:Wait()
         RunService.RenderStepped:Wait()
@@ -1953,22 +2161,13 @@ function Acursive:CreateWindow(opts)
         if self_.Destroyed then return end
         local targetH = computeHeight()
         Main.Size = UDim2.new(0, self_.Size.X.Offset, 0, 0)
-        tween(NavWrap, 0.55, {
-            Position = UDim2.new(0.5, 0, 0, 14),
-            BackgroundTransparency = 0,
-        }, Enum.EasingStyle.Quart)
-        tween(NavStroke, 0.55, { Transparency = 0 })
-        tween(NavShadow, 0.55, { Transparency = 0.3 })
+        if self_.Nav.Show then self_.Nav:Show() end
         task.wait(0.15)
         tween(Main, 0.6, { Size = UDim2.new(0, self_.Size.X.Offset, 0, targetH) }, Enum.EasingStyle.Quart)
         task.wait(0.4)
         if self_.Destroyed then return end
-        if self_.CurrentTab and self_.Tabs[self_.CurrentTab] then
-            local t = self_.Tabs[self_.CurrentTab]
-            local relX = t.AbsolutePosition.X - NavWrap.AbsolutePosition.X + t.AbsoluteSize.X / 2
-            TabIndicator.Position = UDim2.new(0, relX, 1, -2)
-            TabIndicator.Size = UDim2.new(0, t.AbsoluteSize.X - 14, 0, 2)
-            TabIndicator.Visible = true
+        if self_.CurrentTab and self_.Tabs[self_.CurrentTab] and self_.Nav.UpdateIndicator then
+            self_.Nav:UpdateIndicator(self_.CurrentTab)
         end
         if self_.ShowBranding then
             Acursive:Notify({ Title = self_.Title, Content = "Loaded successfully", Duration = 4 })
@@ -1980,7 +2179,6 @@ function Acursive:CreateWindow(opts)
         task.defer(function() FocusMode:Enable() end)
     end
 
-    -- Optionally add the Profile tab.
     if self_.ShowProfile then
         task.defer(function()
             local profileTab = self_:CreateTab("Profile", 0)
@@ -1993,10 +2191,6 @@ function Acursive:CreateWindow(opts)
     return self_
 end
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  WINDOW METHODS
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-
 function WindowClass:Notify(opts) return Acursive:Notify(opts) end
 
 function WindowClass:Destroy()
@@ -2007,8 +2201,8 @@ function WindowClass:Destroy()
     for _, c in ipairs(accentGradients) do
         pcall(function() if c and c.Parent then c:Destroy() end end)
     end
-    pcall(function() if self.NavWrap then self.NavWrap:Destroy() end end)
-    pcall(function() if self.Main    then self.Main:Destroy()    end end)
+    if self.Nav then pcall(function() self.Nav:Destroy() end) end
+    pcall(function() if self.Main then self.Main:Destroy() end end)
     for i = #trackedWindows, 1, -1 do
         if trackedWindows[i] == self then table.remove(trackedWindows, i) end
     end
@@ -2017,10 +2211,6 @@ function WindowClass:Destroy()
         FocusMode:Disable()
     end
 end
-
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  SECTION + CONTROL BUILDERS
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 
 function TabClass:CreateSection(title, order)
     if self.Destroyed then return nil end
@@ -2115,12 +2305,6 @@ function TabClass:CreateSection(title, order)
         else       section.Size = UDim2.new(1, 0, 0, 0) end
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  TOGGLE                                                     │
-    -- └─────────────────────────────────────────────────────────────┘
-    -- A checkbox row that flips a boolean and calls your callback.
-    -- Supports a keybind (click the small "bind" button) and an
-    -- optional double-click action.
     function sec:CreateToggle(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -2326,10 +2510,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  SLIDER                                                     │
-    -- └─────────────────────────────────────────────────────────────┘
-    -- A horizontal draggable bar that outputs a number.
     function sec:CreateSlider(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -2448,9 +2628,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  BUTTON                                                     │
-    -- └─────────────────────────────────────────────────────────────┘
     function sec:CreateButton(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -2500,10 +2677,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  DROPDOWN                                                   │
-    -- └─────────────────────────────────────────────────────────────┘
-    -- A single-select dropdown list.
     function sec:CreateDropdown(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -2671,10 +2844,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  MULTI-DROPDOWN                                             │
-    -- └─────────────────────────────────────────────────────────────┘
-    -- A dropdown where you can toggle multiple options on / off.
     function sec:CreateMultiDropdown(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -2828,10 +2997,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  COLOR PICKER                                               │
-    -- └─────────────────────────────────────────────────────────────┘
-    -- Expandable HSV color picker with hex input.
     function sec:CreateColorPicker(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -3261,10 +3426,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  KEYBIND                                                    │
-    -- └─────────────────────────────────────────────────────────────┘
-    -- A dedicated keybind row (no toggle state, just fires).
     function sec:CreateKeybind(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -3346,9 +3507,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  TEXTBOX                                                    │
-    -- └─────────────────────────────────────────────────────────────┘
     function sec:CreateTextbox(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -3427,9 +3585,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  LABEL                                                      │
-    -- └─────────────────────────────────────────────────────────────┘
     function sec:CreateLabel(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -3458,10 +3613,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  PARAGRAPH                                                  │
-    -- └─────────────────────────────────────────────────────────────┘
-    -- A title + wrapped body text block, like a help card.
     function sec:CreateParagraph(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -3532,9 +3683,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  DIVIDER                                                    │
-    -- └─────────────────────────────────────────────────────────────┘
     function sec:CreateDivider()
         sec._order = sec._order + 1
         local line = Instance.new("Frame")
@@ -3546,9 +3694,6 @@ function TabClass:CreateSection(title, order)
         return { Frame = line }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  IMAGE                                                      │
-    -- └─────────────────────────────────────────────────────────────┘
     function sec:CreateImage(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -3581,11 +3726,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  PROGRESS BAR  (new)                                        │
-    -- └─────────────────────────────────────────────────────────────┘
-    -- A read-only bar that you can set programmatically. Great for
-    -- showing cooldowns, health, loading state, etc.
     function sec:CreateProgressBar(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -3674,10 +3814,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  NUMBER STEPPER  (new)                                      │
-    -- └─────────────────────────────────────────────────────────────┘
-    -- Numeric input with - / + buttons. Great for fine values.
     function sec:CreateNumberStepper(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -3777,10 +3913,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  RADIO GROUP  (new)                                         │
-    -- └─────────────────────────────────────────────────────────────┘
-    -- A list of options where exactly one is selected at a time.
     function sec:CreateRadioGroup(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -3897,12 +4029,6 @@ function TabClass:CreateSection(title, order)
         }
     end
 
-    -- ┌─────────────────────────────────────────────────────────────┐
-    -- │  SEARCH BOX (standalone)  (new)                             │
-    -- └─────────────────────────────────────────────────────────────┘
-    -- An inline search field. Use it if you want to build your own
-    -- filter logic. The built-in per-tab search bar is already added
-    -- automatically, so you probably don't need this.
     function sec:CreateSearchBox(opts)
         opts = opts or {}
         sec._order = sec._order + 1
@@ -3969,16 +4095,8 @@ function TabClass:CreateSection(title, order)
     end
 end
 
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  TAB METHODS
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-
 function TabClass:Select()  self.Window:SelectTab(self.Name) end
 function TabClass:GetName() return self.Name end
-
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
---✦  EXPORT
---▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 
 if getgenv then
     getgenv().Acursive = Acursive
