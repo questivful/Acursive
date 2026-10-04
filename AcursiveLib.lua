@@ -2074,7 +2074,7 @@ function Acursive:CreateWindow(opts)
         end))
 
         track(layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Size + 14)
+            page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 14)
             if self_.CurrentTab == name then self_:Resize(false) end
         end))
 
