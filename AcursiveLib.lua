@@ -56,6 +56,7 @@ local activeKeybinds     = {}
 local keyCapture         = nil
 local trackedConnections = {}
 local trackedThreads     = {}
+local trackedTweens      = {}
 local trackedWindows     = {}
 local screenGui
 local notifContainer
@@ -89,6 +90,11 @@ local function trackThread(t)
     return t
 end
 
+local function trackTween(t)
+    if t then table.insert(trackedTweens, t) end
+    return t
+end
+
 local function safeCall(fn, ...)
     if type(fn) ~= "function" then return false end
     local ok, err = pcall(fn, ...)
@@ -112,6 +118,7 @@ local function tween(inst, time, props, style, dir)
         props
     )
     t:Play()
+    table.insert(trackedTweens, t)
     return t
 end
 
@@ -158,6 +165,23 @@ local function makeAccentGradient(parent)
     grad.Parent = parent
     table.insert(accentGradients, grad)
     return grad
+end
+
+local function pruneAccentRegistry()
+    for i = #accentTargets, 1, -1 do
+        local e = accentTargets[i]
+        local dead = false
+        if e.inst then
+            if not e.inst.Parent then dead = true end
+        end
+        if dead then table.remove(accentTargets, i) end
+    end
+    for i = #accentGradients, 1, -1 do
+        local g = accentGradients[i]
+        if not g or not g.Parent then
+            table.remove(accentGradients, i)
+        end
+    end
 end
 
 function Acursive:GetAccent()   return Accent end
@@ -346,6 +370,11 @@ function FocusMode:Enable()
     if cam then
         self.OriginalFOV = cam.FieldOfView
         local target = math.max(40, self.OriginalFOV - 15)
+        trackTween(TweenService:Create(
+            cam,
+            TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+            { FieldOfView = target }
+        ))
         TweenService:Create(
             cam,
             TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
@@ -358,6 +387,11 @@ function FocusMode:Enable()
     blur.Name = "AcursiveBlur"
     blur.Size = 0
     blur.Parent = Lighting
+    trackTween(TweenService:Create(
+        blur,
+        TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+        { Size = 14 }
+    ))
     TweenService:Create(
         blur,
         TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
@@ -378,29 +412,33 @@ function FocusMode:Disable()
 
     local cam = workspace.CurrentCamera
     if cam and self.OriginalFOV then
-        TweenService:Create(
+        local t = TweenService:Create(
             cam,
             TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
             { FieldOfView = self.OriginalFOV }
-        ):Play()
+        )
+        t:Play()
+        table.insert(trackedTweens, t)
     end
 
     if self.BlurEffect then
         local b = self.BlurEffect
         self.BlurEffect = nil
-        TweenService:Create(
+        local t = TweenService:Create(
             b,
             TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
             { Size = 0 }
-        ):Play()
-        task.delay(0.45, function()
+        )
+        t:Play()
+        table.insert(trackedTweens, t)
+        trackThread(task.delay(0.45, function()
             if b then pcall(function() b:Destroy() end) end
-        end)
+        end))
     end
 
-    task.delay(0.32, function()
+    trackThread(task.delay(0.32, function()
         self:_DestroyParticles()
-    end)
+    end))
 
     self:_RestoreGuis()
 end
@@ -427,6 +465,14 @@ function Acursive:Cleanup()
         pcall(function() task.cancel(t) end)
     end
     table.clear(trackedThreads)
+
+    for _, t in ipairs(trackedTweens) do
+        pcall(function()
+            if t and t.PlaybackState then t:Cancel() end
+        end)
+    end
+    table.clear(trackedTweens)
+
     table.clear(trackedWindows)
     table.clear(accentTargets)
     table.clear(accentGradients)
@@ -437,10 +483,13 @@ function Acursive:Cleanup()
         FocusMode.Depth = 0
         FocusMode:Disable()
     end
+    FocusMode:_DestroyParticles()
+
+    if notifContainer then pcall(function() notifContainer:Destroy() end) end
+    notifContainer = nil
 
     if screenGui then pcall(function() screenGui:Destroy() end) end
     screenGui = nil
-    notifContainer = nil
     notifCounter = 0
 end
 
@@ -619,6 +668,7 @@ function Acursive:Notify(opts)
     tween(progressFill, duration, { Size = UDim2.new(0, 0, 1, 0) }, Enum.EasingStyle.Linear)
 
     trackThread(task.delay(duration, function()
+        if not wrapper or not wrapper.Parent then return end
         tween(notif, 0.3, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
         tween(accentBar, 0.3, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
         tween(titleLbl, 0.3, { TextTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
@@ -626,6 +676,7 @@ function Acursive:Notify(opts)
         tween(progressBg, 0.3, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
         tween(progressFill, 0.3, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
         task.wait(0.15)
+        if not wrapper or not wrapper.Parent then return end
         tween(wrapper, 0.35, { Size = UDim2.new(1, 0, 0, 0) }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
         task.wait(0.4)
         if wrapper and wrapper.Parent then wrapper:Destroy() end
@@ -846,9 +897,11 @@ end
 function DockManager:undock(tab)
     for i, d in ipairs(self.panels) do
         if d.tab == tab then
-            tab.Page.Parent = tab.Window.Content
-            tab.Page.Size = UDim2.new(1, 0, 1, 0)
-            tab.Page.Visible = (tab.Window.CurrentTab == tab.Name)
+            if d.tab.Window and d.tab.Window.Content then
+                tab.Page.Parent = tab.Window.Content
+                tab.Page.Size = UDim2.new(1, 0, 1, 0)
+                tab.Page.Visible = (tab.Window.CurrentTab == tab.Name)
+            end
             tab.Docked = false
             local p = d.panel
             table.remove(self.panels, i)
@@ -872,10 +925,12 @@ end
 function DockManager:clearAll()
     for _, d in ipairs(self.panels) do
         pcall(function()
-            d.tab.Page.Parent = d.tab.Window.Content
-            d.tab.Page.Size = UDim2.new(1, 0, 1, 0)
+            if d.tab.Window and d.tab.Window.Content then
+                d.tab.Page.Parent = d.tab.Window.Content
+                d.tab.Page.Size = UDim2.new(1, 0, 1, 0)
+            end
             d.tab.Docked = false
-            d.panel:Destroy()
+            if d.panel then d.panel:Destroy() end
         end)
     end
     table.clear(self.panels)
@@ -892,7 +947,9 @@ track(UserInputService.InputChanged:Connect(function(input)
         or input.UserInputType == Enum.UserInputType.Touch then
         local dy = input.Position.Y - DockManager.resize.startY
         local newH = math.clamp(DockManager.resize.startH + dy, 120, 900)
-        panel.Size = UDim2.new(1, 0, 0, newH)
+        if panel.Parent then
+            panel.Size = UDim2.new(1, 0, 0, newH)
+        end
     end
 end))
 
@@ -969,8 +1026,9 @@ local function buildViewportCharacter(viewport)
 
         clone.Parent = worldModel
 
-        local pivot = hrp or clone:FindFirstChildWhichIsA("BasePart", true)
-        if pivot then pcall(function() clone:PivotTo(CFrame.new(0, 0, 0)) end) end
+        if clone.PrimaryPart then
+            pcall(function() clone:PivotTo(CFrame.new(0, 0, 0)) end)
+        end
 
         clearModel()
         currentModel = clone
@@ -991,7 +1049,9 @@ local function buildViewportCharacter(viewport)
                 char:WaitForChild("HumanoidRootPart", 5)
             end)
             task.wait(0.2)
-            loadCharacter(char)
+            if viewport and viewport.Parent then
+                loadCharacter(char)
+            end
         end
     end)
 
@@ -1002,11 +1062,13 @@ local function buildViewportCharacter(viewport)
             char:WaitForChild("HumanoidRootPart", 5)
         end)
         task.wait(0.1)
-        loadCharacter(char)
+        if viewport and viewport.Parent then
+            loadCharacter(char)
+        end
     end))
 
     track(RunService.RenderStepped:Connect(function(dt)
-        if not cam.Parent then return end
+        if not cam.Parent or not viewport.Parent then return end
         angle = (angle + dt * 0.5) % (math.pi * 2)
         local x = math.sin(angle) * radius
         local z = math.cos(angle) * radius
@@ -1146,28 +1208,6 @@ local function computeNavWidth(window)
     return math.min(navW, maxNav), buttons
 end
 
-local function computeNavHeight(window)
-    local buttons = {}
-    for _, c in ipairs(window.TabContainer:GetChildren()) do
-        if c:IsA("TextButton") then table.insert(buttons, c) end
-    end
-    if #buttons == 0 then return nil, buttons end
-    local vh = 600
-    if workspace.CurrentCamera then
-        vh = workspace.CurrentCamera.ViewportSize.Y
-    end
-    local maxNav = math.min(vh - 100, 700)
-    local pad = 4
-    local containerPad = 20
-    local n = #buttons
-    local perTab = math.clamp((maxNav - containerPad - (n - 1) * pad) / n, 40, 80)
-    for _, b in ipairs(buttons) do
-        b.Size = UDim2.new(0, perTab, 0, 22)
-    end
-    local navH = n * perTab + (n - 1) * pad + containerPad
-    return math.min(navH, maxNav), buttons
-end
-
 local WheelNav = {}
 WheelNav.__index = WheelNav
 
@@ -1180,6 +1220,7 @@ function WheelNav.new(window, side)
     self.Hovered = false
     self.Expanded = false
     self._selectedName = nil
+    self._connections = {}
 
     local sg = getScreenGui()
     local wrap = Instance.new("Frame")
@@ -1243,7 +1284,7 @@ function WheelNav.new(window, side)
     end))
     track(wrap.MouseLeave:Connect(function()
         task.defer(function()
-            if not self:_isMouseInside() then
+            if self.Wrap and self.Wrap.Parent and not self:_isMouseInside() then
                 self:SetHovered(false)
             end
         end)
@@ -1253,6 +1294,7 @@ function WheelNav.new(window, side)
 end
 
 function WheelNav:_isMouseInside()
+    if not self.Wrap or not self.Wrap.Parent then return false end
     local m = UserInputService:GetMouseLocation()
     local ap = self.Wrap.AbsolutePosition
     local as = self.Wrap.AbsoluteSize
@@ -1294,14 +1336,15 @@ function WheelNav:AddButton(name, order)
         if idx then self:SetFocus(idx, false) end
     end))
 
+    local lastClick = 0
     track(btn.MouseButton1Click:Connect(function()
         local now = tick()
-        if self._lastClick and now - self._lastClick < 0.3 then
-            self._lastClick = 0
+        if now - lastClick < 0.3 then
+            lastClick = 0
             local tab = self.Window.TabObjects[name]
             if tab then DockManager:toggle(tab) end
         else
-            self._lastClick = now
+            lastClick = now
             self.Window:SelectTab(name)
             self:SetSelected(name)
         end
@@ -1336,6 +1379,7 @@ end
 function WheelNav:_layout(animate)
     local n = #self.Buttons
     if n == 0 then return end
+    if not self.Wrap or not self.Wrap.Parent then return end
 
     local spacing = 34
     local focus = self.FocusIndex
@@ -1364,31 +1408,33 @@ function WheelNav:_layout(animate)
     end
 
     for i, e in ipairs(self.Buttons) do
-        local offset = i - focus
-        local absOff = math.abs(offset)
-        local scale = math.max(0.35, 1 - absOff * 0.18)
-        local y = offset * spacing
-        local targetH = 26 * scale
-        local targetW = math.clamp(140 * scale, 30, 150)
-        local alpha = math.clamp(1 - absOff * 0.22, 0.12, 1)
-        local selected = (self._selectedName == e.name)
+        if e.button and e.button.Parent then
+            local offset = i - focus
+            local absOff = math.abs(offset)
+            local scale = math.max(0.35, 1 - absOff * 0.18)
+            local y = offset * spacing
+            local targetH = 26 * scale
+            local targetW = math.clamp(140 * scale, 30, 150)
+            local alpha = math.clamp(1 - absOff * 0.22, 0.12, 1)
+            local selected = (self._selectedName == e.name)
 
-        if self.Expanded then
-            tween(e.button, 0.42, {
-                Position = UDim2.new(0.5, 0, 0.5, y),
-                Size = UDim2.new(0, targetW, 0, targetH),
-                TextTransparency = 1 - alpha,
-                BackgroundTransparency = 1 - (alpha * 0.85),
-                TextColor3 = selected and Accent or Palette.Text,
-                TextSize = math.clamp(11 * scale + 2, 9, 14),
-            }, Enum.EasingStyle.Quart)
-        else
-            tween(e.button, 0.3, {
-                Position = UDim2.new(0.5, 0, 0.5, 0),
-                Size = UDim2.new(0, 0, 0, targetH),
-                TextTransparency = 1,
-                BackgroundTransparency = 1,
-            }, Enum.EasingStyle.Quart)
+            if self.Expanded then
+                tween(e.button, 0.42, {
+                    Position = UDim2.new(0.5, 0, 0.5, y),
+                    Size = UDim2.new(0, targetW, 0, targetH),
+                    TextTransparency = 1 - alpha,
+                    BackgroundTransparency = 1 - (alpha * 0.85),
+                    TextColor3 = selected and Accent or Palette.Text,
+                    TextSize = math.clamp(11 * scale + 2, 9, 14),
+                }, Enum.EasingStyle.Quart)
+            else
+                tween(e.button, 0.3, {
+                    Position = UDim2.new(0.5, 0, 0.5, 0),
+                    Size = UDim2.new(0, 0, 0, targetH),
+                    TextTransparency = 1,
+                    BackgroundTransparency = 1,
+                }, Enum.EasingStyle.Quart)
+            end
         end
     end
 end
@@ -1400,7 +1446,12 @@ function WheelNav:Refresh()
 end
 
 function WheelNav:Destroy()
+    self.Buttons = {}
     if self.Wrap then pcall(function() self.Wrap:Destroy() end) end
+    self.Wrap = nil
+    self.Stroke = nil
+    self.HintBar = nil
+    self.Container = nil
 end
 
 local BarNav = {}
@@ -1567,16 +1618,16 @@ end
 function BarNav:UpdateIndicator(name)
     local window = self.Window
     local btn = window.Tabs[name]
-    if not btn then return end
+    if not btn or not btn.Parent then return end
+    if not self.Wrap or not self.Wrap.Parent then return end
     self.Indicator.Visible = true
+    local relX = btn.AbsolutePosition.X - self.Wrap.AbsolutePosition.X + btn.AbsoluteSize.X / 2
     if self.Position == "Top" then
-        local relX = btn.AbsolutePosition.X - self.Wrap.AbsolutePosition.X + btn.AbsoluteSize.X / 2
         tween(self.Indicator, 0.25, {
             Position = UDim2.new(0, relX, 1, -2),
             Size = UDim2.new(0, btn.AbsoluteSize.X - 14, 0, 2),
         }, Enum.EasingStyle.Quart)
     else
-        local relX = btn.AbsolutePosition.X - self.Wrap.AbsolutePosition.X + btn.AbsoluteSize.X / 2
         tween(self.Indicator, 0.25, {
             Position = UDim2.new(0, relX, 0, 2),
             Size = UDim2.new(0, btn.AbsoluteSize.X - 14, 0, 2),
@@ -1585,6 +1636,7 @@ function BarNav:UpdateIndicator(name)
 end
 
 function BarNav:UpdateNavSize()
+    if not self.Wrap or not self.Wrap.Parent then return end
     local navW, _ = computeNavWidth(self.Window)
     if navW then
         self.Wrap.Size = UDim2.new(0, navW, 0, 30)
@@ -1592,6 +1644,7 @@ function BarNav:UpdateNavSize()
 end
 
 function BarNav:Show()
+    if not self.Wrap or not self.Wrap.Parent then return end
     if self.Position == "Top" then
         tween(self.Wrap, 0.55, {
             Position = UDim2.new(0.5, 0, 0, 14),
@@ -1608,6 +1661,7 @@ function BarNav:Show()
 end
 
 function BarNav:Hide()
+    if not self.Wrap or not self.Wrap.Parent then return end
     if self.Position == "Top" then
         tween(self.Wrap, 0.4, {
             Position = UDim2.new(0.5, 0, 0, -50),
@@ -1621,11 +1675,19 @@ function BarNav:Hide()
     end
     tween(self.Stroke, 0.4, { Transparency = 1 })
     tween(self.Shadow, 0.4, { Transparency = 1 })
-    self.Indicator.Visible = false
+    if self.Indicator then self.Indicator.Visible = false end
 end
 
 function BarNav:Destroy()
+    self.Buttons = {}
     if self.Wrap then pcall(function() self.Wrap:Destroy() end) end
+    self.Wrap = nil
+    self.Stroke = nil
+    self.Shadow = nil
+    self.TabContainer = nil
+    self.Indicator = nil
+    self.AccentLine = nil
+    self.Glow = nil
 end
 
 function Acursive:CreateWindow(opts)
@@ -1665,6 +1727,9 @@ function Acursive:CreateWindow(opts)
     self_.LastToggleTime = 0
     self_.Destroyed      = false
     self_.FocusActive    = false
+    self_.OwnedAccentTargets = {}
+    self_.OwnedKeybinds  = {}
+    self_.OwnedGradients = {}
 
     if THEMES[opts.Theme or ""] then
         CurrentTheme = opts.Theme
@@ -1743,7 +1808,7 @@ function Acursive:CreateWindow(opts)
             end
         end))
         track(UserInputService.InputChanged:Connect(function(input)
-            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            if dragging and Main and Main.Parent and (input.UserInputType == Enum.UserInputType.MouseMovement
                 or input.UserInputType == Enum.UserInputType.Touch) then
                 local delta = input.Position - dragStart
                 Main.Position = UDim2.new(
@@ -1816,6 +1881,7 @@ function Acursive:CreateWindow(opts)
 
     function self_:Resize(instant)
         if not self_.Visible or self_.Destroyed then return end
+        if not Main or not Main.Parent then return end
         local target = computeHeight()
         if mainTween then mainTween:Cancel() end
         local targetSize = UDim2.new(0, self_.Size.X.Offset, 0, target)
@@ -1830,31 +1896,20 @@ function Acursive:CreateWindow(opts)
         if self_.Destroyed or self_.Visible then return end
         self_.Visible = true
         local targetH = computeHeight()
+        if not Main or not Main.Parent then return end
         Main.Visible = true
         for _, c in pairs(DockManager.containers) do
             if c and c.Parent then c.Visible = true end
         end
-        if self_.NavPosition == "Top" then
-            tween(Main, 0.55, {
-                Size = UDim2.new(0, self_.Size.X.Offset, 0, targetH),
-                Position = UDim2.new(0.5, 0, 0, 60),
-            }, Enum.EasingStyle.Quart)
-        elseif self_.NavPosition == "Bottom" then
-            tween(Main, 0.55, {
-                Size = UDim2.new(0, self_.Size.X.Offset, 0, targetH),
-                Position = UDim2.new(0.5, 0, 0, 60),
-            }, Enum.EasingStyle.Quart)
-        else
-            tween(Main, 0.55, {
-                Size = UDim2.new(0, self_.Size.X.Offset, 0, targetH),
-                Position = UDim2.new(0.5, 0, 0, 60),
-            }, Enum.EasingStyle.Quart)
-        end
-        if self_.Nav.Show then self_.Nav:Show() end
-        if self_.CurrentTab and self_.Tabs[self_.CurrentTab] and self_.Nav.UpdateIndicator then
+        tween(Main, 0.55, {
+            Size = UDim2.new(0, self_.Size.X.Offset, 0, targetH),
+            Position = UDim2.new(0.5, 0, 0, 60),
+        }, Enum.EasingStyle.Quart)
+        if self_.Nav and self_.Nav.Show then self_.Nav:Show() end
+        if self_.CurrentTab and self_.Tabs[self_.CurrentTab] and self_.Nav and self_.Nav.UpdateIndicator then
             self_.Nav:UpdateIndicator(self_.CurrentTab)
         end
-        if self_.Nav.SetSelected then
+        if self_.Nav and self_.Nav.SetSelected then
             self_.Nav:SetSelected(self_.CurrentTab)
         end
         if self_.FocusModeEnabled and not self_.FocusActive then
@@ -1866,11 +1921,13 @@ function Acursive:CreateWindow(opts)
     function self_:Hide()
         if not self_.Visible then return end
         self_.Visible = false
-        tween(Main, 0.4, {
-            Size = UDim2.new(0, self_.Size.X.Offset, 0, 0),
-            Position = UDim2.new(0.5, 0, 0, 40),
-        }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-        if self_.Nav.Hide then self_.Nav:Hide() end
+        if Main and Main.Parent then
+            tween(Main, 0.4, {
+                Size = UDim2.new(0, self_.Size.X.Offset, 0, 0),
+                Position = UDim2.new(0.5, 0, 0, 40),
+            }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        end
+        if self_.Nav and self_.Nav.Hide then self_.Nav:Hide() end
         for _, c in pairs(DockManager.containers) do
             if c and c.Parent then c.Visible = false end
         end
@@ -1887,7 +1944,7 @@ function Acursive:CreateWindow(opts)
     function self_:SetToggleKey(key) self_.ToggleKey = key end
     function self_:SetTitle(title)     self_.Title = tostr(title) end
     function self_:SetSubtitle(sub)    self_.Subtitle = tostr(sub) end
-    function self_:SetPosition(pos)    Main.Position = pos end
+    function self_:SetPosition(pos)    if Main and Main.Parent then Main.Position = pos end end
     function self_:SetSize(size)       self_.Size = size self_:Resize(true) end
     function self_:IsVisible()         return self_.Visible end
     function self_:SetFocusFOVDrop(v)  self_.FocusFOVDrop = v end
@@ -1898,14 +1955,16 @@ function Acursive:CreateWindow(opts)
         local tabObj = self_.TabObjects[name]
         if tabObj and DockManager:isDocked(tabObj) then
             for n, b in pairs(self_.Tabs) do
-                if n == name then
-                    tween(b, 0.2, { TextColor3 = Accent })
-                else
-                    tween(b, 0.2, { TextColor3 = Palette.Muted })
+                if b and b.Parent then
+                    if n == name then
+                        tween(b, 0.2, { TextColor3 = Accent })
+                    else
+                        tween(b, 0.2, { TextColor3 = Palette.Muted })
+                    end
                 end
             end
-            if self_.Nav.UpdateIndicator then self_.Nav:UpdateIndicator(name) end
-            if self_.Nav.SetSelected then self_.Nav:SetSelected(name) end
+            if self_.Nav and self_.Nav.UpdateIndicator then self_.Nav:UpdateIndicator(name) end
+            if self_.Nav and self_.Nav.SetSelected then self_.Nav:SetSelected(name) end
             self_.CurrentTab = name
             return
         end
@@ -1921,15 +1980,17 @@ function Acursive:CreateWindow(opts)
         if self_.Pages[name] then self_.Pages[name].Visible = true end
 
         for n, b in pairs(self_.Tabs) do
-            if n == name then
-                tween(b, 0.2, { TextColor3 = Accent })
-            else
-                tween(b, 0.2, { TextColor3 = Palette.Muted })
+            if b and b.Parent then
+                if n == name then
+                    tween(b, 0.2, { TextColor3 = Accent })
+                else
+                    tween(b, 0.2, { TextColor3 = Palette.Muted })
+                end
             end
         end
 
-        if self_.Nav.UpdateIndicator then self_.Nav:UpdateIndicator(name) end
-        if self_.Nav.SetSelected then self_.Nav:SetSelected(name) end
+        if self_.Nav and self_.Nav.UpdateIndicator then self_.Nav:UpdateIndicator(name) end
+        if self_.Nav and self_.Nav.SetSelected then self_.Nav:SetSelected(name) end
 
         self_.CurrentTab = name
         self_:Resize(false)
@@ -2074,6 +2135,7 @@ function Acursive:CreateWindow(opts)
         end))
 
         track(layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            if not page or not page.Parent then return end
             page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 14)
             if self_.CurrentTab == name then self_:Resize(false) end
         end))
@@ -2103,6 +2165,7 @@ function Acursive:CreateWindow(opts)
 
     if not self_.CurrentTab then
         trackThread(task.defer(function()
+            if self_.Destroyed then return end
             local first
             for _, b in ipairs(self_.TabContainer:GetChildren()) do
                 if b:IsA("TextButton") then first = b break end
@@ -2119,17 +2182,15 @@ function Acursive:CreateWindow(opts)
             if keyCapture then return end
             if isTyping() then return end
             if input.KeyCode == self_.ToggleKey then
-                local now = tick()
-                if now - self_.LastToggleTime < 0.25 then return end
-                self_.LastToggleTime = now
                 self_:Toggle()
             end
         end))
     end
 
     track(UserInputService.InputChanged:Connect(function()
-        if self_.Nav.UpdateNavSize then self_.Nav:UpdateNavSize() end
-        if self_.CurrentTab and self_.Tabs[self_.CurrentTab] and self_.Nav.UpdateIndicator then
+        if self_.Destroyed then return end
+        if self_.Nav and self_.Nav.UpdateNavSize then self_.Nav:UpdateNavSize() end
+        if self_.CurrentTab and self_.Tabs[self_.CurrentTab] and self_.Nav and self_.Nav.UpdateIndicator then
             self_.Nav:UpdateIndicator(self_.CurrentTab)
         end
     end))
@@ -2160,13 +2221,15 @@ function Acursive:CreateWindow(opts)
         end
         if self_.Destroyed then return end
         local targetH = computeHeight()
+        if not Main or not Main.Parent then return end
         Main.Size = UDim2.new(0, self_.Size.X.Offset, 0, 0)
-        if self_.Nav.Show then self_.Nav:Show() end
+        if self_.Nav and self_.Nav.Show then self_.Nav:Show() end
         task.wait(0.15)
+        if self_.Destroyed then return end
         tween(Main, 0.6, { Size = UDim2.new(0, self_.Size.X.Offset, 0, targetH) }, Enum.EasingStyle.Quart)
         task.wait(0.4)
         if self_.Destroyed then return end
-        if self_.CurrentTab and self_.Tabs[self_.CurrentTab] and self_.Nav.UpdateIndicator then
+        if self_.CurrentTab and self_.Tabs[self_.CurrentTab] and self_.Nav and self_.Nav.UpdateIndicator then
             self_.Nav:UpdateIndicator(self_.CurrentTab)
         end
         if self_.ShowBranding then
@@ -2181,6 +2244,7 @@ function Acursive:CreateWindow(opts)
 
     if self_.ShowProfile then
         task.defer(function()
+            if self_.Destroyed then return end
             local profileTab = self_:CreateTab("Profile", 0)
             if profileTab then
                 buildProfilePage(profileTab.Page, self_)
@@ -2196,20 +2260,58 @@ function WindowClass:Notify(opts) return Acursive:Notify(opts) end
 function WindowClass:Destroy()
     if self.Destroyed then return end
     self.Destroyed = true
+
     pcall(function() self:SaveConfig() end)
-    DockManager:clearAll()
-    for _, c in ipairs(accentGradients) do
-        pcall(function() if c and c.Parent then c:Destroy() end end)
+
+    for _, d in ipairs(DockManager.panels) do
+        if d.tab and d.tab.Window == self then
+            pcall(function() if d.panel then d.panel:Destroy() end end)
+        end
     end
+    local kept = {}
+    for _, d in ipairs(DockManager.panels) do
+        if not (d.tab and d.tab.Window == self) then
+            table.insert(kept, d)
+        end
+    end
+    DockManager.panels = kept
+
+    for i = #activeKeybinds, 1, -1 do
+        local e = activeKeybinds[i]
+        if e and e.owner == self then
+            table.remove(activeKeybinds, i)
+        end
+    end
+
+    for i = #accentGradients, 1, -1 do
+        local g = accentGradients[i]
+        if not g or not g.Parent or (self.Main and g:IsDescendantOf(self.Main)) or (self.Nav and self.Nav.Wrap and g:IsDescendantOf(self.Nav.Wrap)) then
+            if g and g.Parent then pcall(function() g:Destroy() end) end
+            table.remove(accentGradients, i)
+        end
+    end
+
     if self.Nav then pcall(function() self.Nav:Destroy() end) end
-    pcall(function() if self.Main then self.Main:Destroy() end end)
+
+    if self.Main then pcall(function() self.Main:Destroy() end) end
+    self.Main = nil
+    self.Content = nil
+    self.DragBar = nil
+    self.Tabs = {}
+    self.Pages = {}
+    self.TabObjects = {}
+    self.Toggles = {}
+
     for i = #trackedWindows, 1, -1 do
         if trackedWindows[i] == self then table.remove(trackedWindows, i) end
     end
+
     if self.FocusActive then
         self.FocusActive = false
         FocusMode:Disable()
     end
+
+    task.defer(pruneAccentRegistry)
 end
 
 function TabClass:CreateSection(title, order)
@@ -2294,6 +2396,8 @@ function TabClass:CreateSection(title, order)
     sec.Header   = header
     sec.Title    = tostr(title)
     sec.Collapsed = false
+    sec.Destroyed = false
+    sec.Elements = {}
 
     function sec:SetTitle(t)   header.Text = tostr(t) sec.Title = tostr(t) end
     function sec:SetVisible(v) section.Visible = v end
@@ -2303,6 +2407,16 @@ function TabClass:CreateSection(title, order)
         section.AutomaticSize = v and Enum.AutomaticSize.None or Enum.AutomaticSize.Y
         if v then section.Size = UDim2.new(1, 0, 0, 24)
         else       section.Size = UDim2.new(1, 0, 0, 0) end
+    end
+    function sec:Destroy()
+        if sec.Destroyed then return end
+        sec.Destroyed = true
+        for i = #activeKeybinds, 1, -1 do
+            local e = activeKeybinds[i]
+            if e and e.owner == sec then table.remove(activeKeybinds, i) end
+        end
+        if section and section.Parent then pcall(function() section:Destroy() end) end
+        sec.Elements = {}
     end
 
     function sec:CreateToggle(opts)
@@ -2403,7 +2517,7 @@ function TabClass:CreateSection(title, order)
         kbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         kbStroke.Parent = keyBtn
 
-        local keyEntry = { key = nil, callback = nil }
+        local keyEntry = { key = nil, callback = nil, owner = sec }
         table.insert(activeKeybinds, keyEntry)
 
         local function setState(newState, fire)
@@ -2416,6 +2530,7 @@ function TabClass:CreateSection(title, order)
         end
 
         registerAccentFn(function()
+            if not row or not row.Parent then return end
             if state then
                 box.BackgroundColor3 = Accent
                 boxStroke.Color = Accent
@@ -2496,7 +2611,7 @@ function TabClass:CreateSection(title, order)
             save = not noSave,
         }
 
-        return {
+        local el = {
             Set         = function(v) setState(v, true) end,
             Get         = function() return state end,
             SetKeybind  = function(key)
@@ -2506,8 +2621,16 @@ function TabClass:CreateSection(title, order)
             end,
             SetVisible  = function(v) row.Visible = v end,
             SetName     = function(t) lbl.Text = tostr(t) row:SetAttribute("RowLabel", tostr(t)) end,
+            Destroy     = function()
+                for i = #activeKeybinds, 1, -1 do
+                    if activeKeybinds[i] == keyEntry then table.remove(activeKeybinds, i) end
+                end
+                if row and row.Parent then row:Destroy() end
+            end,
             Row         = row,
         }
+        table.insert(sec.Elements, el)
+        return el
     end
 
     function sec:CreateSlider(opts)
@@ -2587,6 +2710,7 @@ function TabClass:CreateSection(title, order)
 
         local dragging = false
         local function update(input)
+            if not bar.Parent then return end
             local pos = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
             value = min + (max - min) * pos
             fill.Size = UDim2.new(pos, 0, 1, 0)
@@ -3266,6 +3390,7 @@ function TabClass:CreateSection(title, order)
         local function showMagnifier()
             if not magnifier then
                 local sg = sec.Window.ScreenGui
+                if not sg or not sg.Parent then return end
                 magnifier = Instance.new("Frame")
                 magnifier.Name = "PickerMagnifier"
                 magnifier.Size = UDim2.new(0, 0, 0, 0)
@@ -3288,9 +3413,11 @@ function TabClass:CreateSection(title, order)
                     Size = UDim2.new(0, 88, 0, 88),
                 }):Play()
             end
-            magnifier.BackgroundColor3 = current
-            local mousePos = UserInputService:GetMouseLocation()
-            magnifier.Position = UDim2.new(0, mousePos.X, 0, mousePos.Y - 75)
+            if magnifier and magnifier.Parent then
+                magnifier.BackgroundColor3 = current
+                local mousePos = UserInputService:GetMouseLocation()
+                magnifier.Position = UDim2.new(0, mousePos.X, 0, mousePos.Y - 75)
+            end
         end
 
         local function hideMagnifier()
@@ -3310,6 +3437,7 @@ function TabClass:CreateSection(title, order)
         local draggingSat, draggingHue = false, false
 
         local function updateFromSat(input)
+            if not satSquare.Parent then return end
             local relX = math.clamp((input.Position.X - satSquare.AbsolutePosition.X) / satSquare.AbsoluteSize.X, 0, 1)
             local relY = math.clamp((input.Position.Y - satSquare.AbsolutePosition.Y) / satSquare.AbsoluteSize.Y, 0, 1)
             s = relX
@@ -3320,6 +3448,7 @@ function TabClass:CreateSection(title, order)
         end
 
         local function updateFromHue(input)
+            if not hueSlider.Parent then return end
             local relX = math.clamp((input.Position.X - hueSlider.AbsolutePosition.X) / hueSlider.AbsoluteSize.X, 0, 1)
             h = relX
             current = Color3.fromHSV(h, s, v)
@@ -3372,6 +3501,7 @@ function TabClass:CreateSection(title, order)
         end))
 
         track(hexBox.FocusLost:Connect(function()
+            tween(hbStroke, 0.15, { Color = Palette.Outline })
             local hex = hexBox.Text:gsub("#", "")
             if #hex == 6 then
                 local rn = tonumber(hex:sub(1, 2), 16)
@@ -3387,9 +3517,6 @@ function TabClass:CreateSection(title, order)
         end))
         track(hexBox.Focused:Connect(function()
             tween(hbStroke, 0.15, { Color = Accent })
-        end))
-        track(hexBox.FocusLost:Connect(function()
-            tween(hbStroke, 0.15, { Color = Palette.Outline })
         end))
 
         local function toggleExpand()
@@ -3479,7 +3606,7 @@ function TabClass:CreateSection(title, order)
         kbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         kbStroke.Parent = keyBtn
 
-        local keyEntry = { key = defaultKey, callback = function() if callback then safeCall(callback) end end }
+        local keyEntry = { key = defaultKey, callback = function() if callback then safeCall(callback) end end, owner = sec }
         table.insert(activeKeybinds, keyEntry)
 
         track(keyBtn.MouseEnter:Connect(function()
@@ -4093,10 +4220,26 @@ function TabClass:CreateSection(title, order)
             SetVisible = function(v) row.Visible = v end,
         }
     end
+
+    return sec
 end
 
 function TabClass:Select()  self.Window:SelectTab(self.Name) end
 function TabClass:GetName() return self.Name end
+
+function TabClass:Destroy()
+    if self.Destroyed then return end
+    self.Destroyed = true
+    for _, sec in ipairs(self.Sections) do
+        if sec and sec.Destroy then sec:Destroy() end
+    end
+    self.Sections = {}
+    if self.Page and self.Page.Parent then
+        pcall(function() self.Page:Destroy() end)
+    end
+    self.Page = nil
+    self.SearchBox = nil
+end
 
 if getgenv then
     getgenv().Acursive = Acursive
