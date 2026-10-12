@@ -1,66 +1,56 @@
---!nocheck
--- LuaUEngine — Code IDE inside of roblox
---[[ New Updates
-1. Performance Issues [+~] sort of fixed
-2. Issues with the update liner upon mouse hovering also fixed.
-3. Fixed latest memory leaks
-]]
+-- LuaUEngine
+-- Uh YERANDY made this pls dont edit.
+local UserInputService = game:GetService("UserInputService")
+local TextService = game:GetService("TextService")
+local RunService = game:GetService("RunService")
+local ContextActionService = game:GetService("ContextActionService")
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
 
--- ░░ Services ░░───────────────────────────────────────────────────────────────
-local UserInputService    = game:GetService("UserInputService")
-local TextService         = game:GetService("TextService")
-local RunService          = game:GetService("RunService")
-local ContextActionService= game:GetService("ContextActionService")
-local HttpService         = game:GetService("HttpService")
-local TweenService        = game:GetService("TweenService")
-local Players             = game:GetService("Players")
-
--- ░░ Tunables ░░───────────────────────────────────────────────────────────────
 local CONST = {
-    MAX_LINE_CHARS      = 25000,
-    AUTOC_ROW_H        = 22,
-    AUTOC_MAX_ROWS     = 50,
-    AUTOC_MAX_H        = 160,
-    SCROLLBAR_SIZE     = 18,
-    SCROLL_STEP        = 45,
-    KEY_REPEAT_DELAY   = 0.4,
-    KEY_REPEAT_TICK    = 0.04,
-    BLINK_INTERVAL     = 0.5,
-    MINIMAP_DIV        = 3,
-    TWEEN_SMOOTH       = 0.08,
-    TWEEN_BLINK        = 0.06,
-    DOUBLE_CLICK_MS    = 0.3,
-    PASTE_GAP          = 0.25,
-    ARROW_ICON_SIZE    = 12,
-    SCROLL_THUMB_MIN   = 24,
-    FIND_MIN_WIDTH     = 180,
-    FIND_MAX_WIDTH     = 260,
+    MAX_LINE_CHARS = 25000,
+    AUTOC_ROW_H = 22,
+    AUTOC_MAX_ROWS = 50,
+    AUTOC_MAX_H = 160,
+    SCROLLBAR_SIZE = 18,
+    SCROLL_STEP = 45,
+    KEY_REPEAT_DELAY = 0.4,
+    KEY_REPEAT_TICK = 0.04,
+    BLINK_INTERVAL = 0.5,
+    MINIMAP_DIV = 3,
+    TWEEN_SMOOTH = 0.08,
+    TWEEN_BLINK = 0.06,
+    DOUBLE_CLICK_MS = 0.3,
+    PASTE_GAP = 0.25,
+    ARROW_ICON_SIZE = 12,
+    SCROLL_THUMB_MIN = 24,
+    FIND_MIN_WIDTH = 180,
+    FIND_MAX_WIDTH = 260,
+    RELEASE_POLL = 0.03,
 }
 
--- ░░ Icons (kept out of the header on purpose) ░░───────────────────────────────
 local Icons = {
-    Keyword           = "rbxassetid://138943211585672",
-    Function          = "rbxassetid://127323245193020",
-    Global            = "rbxassetid://131643180461501",
-    Library           = "rbxassetid://90462068188809",
-    Class             = "rbxassetid://87746604961029",
-    Constructor       = "rbxassetid://131992096470555",
-    Variable          = "rbxassetid://109933348812399",
-    ScrollArrow       = "rbxassetid://5279719038",
-    FindTopChevron    = "rbxassetid://81817462736641",
+    Keyword = "rbxassetid://138943211585672",
+    Function = "rbxassetid://127323245193020",
+    Global = "rbxassetid://131643180461501",
+    Library = "rbxassetid://90462068188809",
+    Class = "rbxassetid://87746604961029",
+    Constructor = "rbxassetid://131992096470555",
+    Variable = "rbxassetid://109933348812399",
+    ScrollArrow = "rbxassetid://5279719038",
+    FindTopChevron = "rbxassetid://81817462736641",
     FindBottomChevron = "rbxassetid://81817462736641",
-    FindPrev          = "rbxassetid://123393842142851",
-    FindNext          = "rbxassetid://71631858247362",
-    FindClose         = "rbxassetid://80750399461762",
-    FindMatchCase     = "rbxassetid://108524879613542",
-    FindWholeWord     = "rbxassetid://137472614441080",
-    FindRegex         = "rbxassetid://79087075619950",
-    Fold              = "rbxassetid://5642383285",
+    FindPrev = "rbxassetid://123393842142851",
+    FindNext = "rbxassetid://71631858247362",
+    FindClose = "rbxassetid://80750399461762",
+    FindMatchCase = "rbxassetid://108524879613542",
+    FindWholeWord = "rbxassetid://137472614441080",
+    FindRegex = "rbxassetid://79087075619950",
+    Fold = "rbxassetid://5642383285",
 }
 
--- ░░ Persistent baseline data ░░───────────────────────────────────────────────
 local Baseline = {
-    Instances = {},   -- live LuaUEngine instances (for tab focus ordering)
+    Instances = {},
     Clipboard = "",
 }
 
@@ -105,44 +95,40 @@ local GlobalSettings = {
 
 local KeyMaps = {
     Operators = {
-        ["+"]="op_add", ["-"]="op_sub", ["*"]="op_mul", ["/"]="op_div",
-        ["^"]="op_pow", ["%"]="op_mod", ["=="]="op_eq", ["~="]="op_neq",
-        ["<="]="op_le", [">="]="op_ge", ["<"]="op_lt", [">"]="op_gt",
-        ["="]="op_assign", [".."]="op_concat", ["#"]="op_len",
-        [":"]="op_colon", ["&"]="op_ampersand", ["|"]="op_pipe",
-        ["?"]="op_question",
+        ["+"] = "op_add", ["-"] = "op_sub", ["*"] = "op_mul", ["/"] = "op_div",
+        ["^"] = "op_pow", ["%"] = "op_mod", ["=="] = "op_eq", ["~="] = "op_neq",
+        ["<="] = "op_le", [">="] = "op_ge", ["<"] = "op_lt", [">"] = "op_gt",
+        ["="] = "op_assign", [".."] = "op_concat", ["#"] = "op_len",
+        [":"] = "op_colon", ["&"] = "op_ampersand", ["|"] = "op_pipe", ["?"] = "op_question",
     },
     Shift = {
-        [Enum.KeyCode.One]="!", [Enum.KeyCode.Two]="@", [Enum.KeyCode.Three]="#",
-        [Enum.KeyCode.Four]="$", [Enum.KeyCode.Five]="%", [Enum.KeyCode.Six]="^",
-        [Enum.KeyCode.Seven]="&", [Enum.KeyCode.Eight]="*", [Enum.KeyCode.Nine]="(",
-        [Enum.KeyCode.Zero]=")", [Enum.KeyCode.Minus]="_", [Enum.KeyCode.Equals]="+",
-        [Enum.KeyCode.LeftBracket]="{", [Enum.KeyCode.RightBracket]="}",
-        [Enum.KeyCode.BackSlash]="|", [Enum.KeyCode.Semicolon]=":",
-        [Enum.KeyCode.Quote]='\"', [Enum.KeyCode.Comma]="<",
-        [Enum.KeyCode.Period]=">", [Enum.KeyCode.Slash]="?",
-        [Enum.KeyCode.Backquote]="~",
+        [Enum.KeyCode.One] = "!", [Enum.KeyCode.Two] = "@", [Enum.KeyCode.Three] = "#",
+        [Enum.KeyCode.Four] = "$", [Enum.KeyCode.Five] = "%", [Enum.KeyCode.Six] = "^",
+        [Enum.KeyCode.Seven] = "&", [Enum.KeyCode.Eight] = "*", [Enum.KeyCode.Nine] = "(",
+        [Enum.KeyCode.Zero] = ")", [Enum.KeyCode.Minus] = "_", [Enum.KeyCode.Equals] = "+",
+        [Enum.KeyCode.LeftBracket] = "{", [Enum.KeyCode.RightBracket] = "}",
+        [Enum.KeyCode.BackSlash] = "|", [Enum.KeyCode.Semicolon] = ":",
+        [Enum.KeyCode.Quote] = '"', [Enum.KeyCode.Comma] = "<",
+        [Enum.KeyCode.Period] = ">", [Enum.KeyCode.Slash] = "?", [Enum.KeyCode.Backquote] = "~",
     },
     Unshift = {
-        [Enum.KeyCode.One]="1", [Enum.KeyCode.Two]="2", [Enum.KeyCode.Three]="3",
-        [Enum.KeyCode.Four]="4", [Enum.KeyCode.Five]="5", [Enum.KeyCode.Six]="6",
-        [Enum.KeyCode.Seven]="7", [Enum.KeyCode.Eight]="8", [Enum.KeyCode.Nine]="9",
-        [Enum.KeyCode.Zero]="0", [Enum.KeyCode.Minus]="-", [Enum.KeyCode.Equals]="=",
-        [Enum.KeyCode.LeftBracket]="[", [Enum.KeyCode.RightBracket]="]",
-        [Enum.KeyCode.BackSlash]="\\", [Enum.KeyCode.Semicolon]=";",
-        [Enum.KeyCode.Quote]="'", [Enum.KeyCode.Comma]=",",
-        [Enum.KeyCode.Period]=".", [Enum.KeyCode.Slash]="/",
-        [Enum.KeyCode.Backquote]="`", [Enum.KeyCode.Space]=" ",
-        [Enum.KeyCode.KeypadOne]="1", [Enum.KeyCode.KeypadTwo]="2",
-        [Enum.KeyCode.KeypadThree]="3", [Enum.KeyCode.KeypadFour]="4",
-        [Enum.KeyCode.KeypadFive]="5", [Enum.KeyCode.KeypadSix]="6",
-        [Enum.KeyCode.KeypadSeven]="7", [Enum.KeyCode.KeypadEight]="8",
-        [Enum.KeyCode.KeypadNine]="9", [Enum.KeyCode.KeypadZero]="0",
-        [Enum.KeyCode.KeypadDivide]="/", [Enum.KeyCode.KeypadMultiply]="*",
-        [Enum.KeyCode.KeypadMinus]="-", [Enum.KeyCode.KeypadPlus]="+",
+        [Enum.KeyCode.One] = "1", [Enum.KeyCode.Two] = "2", [Enum.KeyCode.Three] = "3",
+        [Enum.KeyCode.Four] = "4", [Enum.KeyCode.Five] = "5", [Enum.KeyCode.Six] = "6",
+        [Enum.KeyCode.Seven] = "7", [Enum.KeyCode.Eight] = "8", [Enum.KeyCode.Nine] = "9",
+        [Enum.KeyCode.Zero] = "0", [Enum.KeyCode.Minus] = "-", [Enum.KeyCode.Equals] = "=",
+        [Enum.KeyCode.LeftBracket] = "[", [Enum.KeyCode.RightBracket] = "]",
+        [Enum.KeyCode.BackSlash] = "\\", [Enum.KeyCode.Semicolon] = ";",
+        [Enum.KeyCode.Quote] = "'", [Enum.KeyCode.Comma] = ",",
+        [Enum.KeyCode.Period] = ".", [Enum.KeyCode.Slash] = "/",
+        [Enum.KeyCode.Backquote] = "`", [Enum.KeyCode.Space] = " ",
+        [Enum.KeyCode.KeypadOne] = "1", [Enum.KeyCode.KeypadTwo] = "2",
+        [Enum.KeyCode.KeypadThree] = "3", [Enum.KeyCode.KeypadFour] = "4",
+        [Enum.KeyCode.KeypadFive] = "5", [Enum.KeyCode.KeypadSix] = "6",
+        [Enum.KeyCode.KeypadSeven] = "7", [Enum.KeyCode.KeypadEight] = "8",
+        [Enum.KeyCode.KeypadNine] = "9", [Enum.KeyCode.KeypadZero] = "0",
+        [Enum.KeyCode.KeypadDivide] = "/", [Enum.KeyCode.KeypadMultiply] = "*",
+        [Enum.KeyCode.KeypadMinus] = "-", [Enum.KeyCode.KeypadPlus] = "+",
     },
-    -- Keys the editor consumes while focused. WASD/arrow/space all included
-    -- because they overlap with default player controls.
     SinkKeys = {
         Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
         Enum.KeyCode.Space, Enum.KeyCode.Up, Enum.KeyCode.Down,
@@ -152,12 +138,10 @@ local KeyMaps = {
         Enum.KeyCode.Y, Enum.KeyCode.Home, Enum.KeyCode.End,
         Enum.KeyCode.PageUp, Enum.KeyCode.PageDown, Enum.KeyCode.Tab,
     },
-    -- Fast lookup set for input suppression
     SinkSet = {},
 }
 for _, kc in ipairs(KeyMaps.SinkKeys) do KeyMaps.SinkSet[kc] = true end
 
--- ░░ Utilities ░░─────────────────────────────────────────────────────────────
 local Utils = {}
 Utils.AutocompleteKeywords = {}
 Utils.DummyLabel = Instance.new("TextLabel")
@@ -211,7 +195,6 @@ function Utils.getCharacter(keyCode, isShiftDown)
     return ""
 end
 
--- Escape a string for use inside a RichText <font> tag.
 do
     local gsub = string.gsub
     function Utils.escapeRichText(s)
@@ -287,14 +270,12 @@ function Utils.getBlockDelta(lineStr)
     return opens - closes
 end
 
--- ░░ ScrollBar ░░─────────────────────────────────────────────────────────────
 local ScrollBar = {}
 ScrollBar.__index = ScrollBar
 
 local function makeArrowButton(parent, rotation, isVertical, bgColor, imgColor, bgTrans, strokeColor)
     local btn = Instance.new("ImageButton")
-    btn.Size = isVertical and UDim2.new(1, 0, 0, CONST.SCROLLBAR_SIZE)
-                          or UDim2.new(0, CONST.SCROLLBAR_SIZE, 1, 0)
+    btn.Size = isVertical and UDim2.new(1, 0, 0, CONST.SCROLLBAR_SIZE) or UDim2.new(0, CONST.SCROLLBAR_SIZE, 1, 0)
     btn.BackgroundColor3 = bgColor or Color3.fromRGB(35, 35, 35)
     btn.BorderColor3 = strokeColor or Color3.fromRGB(33, 33, 33)
     btn.BorderSizePixel = 0
@@ -329,15 +310,14 @@ function ScrollBar.new(container, isVertical)
     self.IsDraggingThumb = false
 
     local get = container.GetAttribute
-    self.TrackColor        = get(container, "ScrollBarTrackColor3")        or Color3.fromRGB(35, 35, 35)
-    self.ThumbColor        = get(container, "ScrollBarThumbColor3")        or Color3.fromRGB(60, 60, 60)
-    self.HoverColor        = get(container, "ScrollBarHoverColor3")        or Color3.fromRGB(75, 75, 75)
-    self.PressColor        = get(container, "ScrollBarPressColor3")        or Color3.fromRGB(40, 40, 40)
-    self.TrackTransparency = get(container, "ScrollBarTrackTransparency")  or 0
-    self.ThumbTransparency = get(container, "ScrollBarThumbTransparency")  or 0
-    local imageColor  = get(container, "ScrollBarImageColor3")  or Color3.fromRGB(160, 160, 160)
+    self.TrackColor = get(container, "ScrollBarTrackColor3") or Color3.fromRGB(35, 35, 35)
+    self.ThumbColor = get(container, "ScrollBarThumbColor3") or Color3.fromRGB(60, 60, 60)
+    self.HoverColor = get(container, "ScrollBarHoverColor3") or Color3.fromRGB(75, 75, 75)
+    self.PressColor = get(container, "ScrollBarPressColor3") or Color3.fromRGB(40, 40, 40)
+    self.TrackTransparency = get(container, "ScrollBarTrackTransparency") or 0
+    self.ThumbTransparency = get(container, "ScrollBarThumbTransparency") or 0
+    local imageColor = get(container, "ScrollBarImageColor3") or Color3.fromRGB(160, 160, 160)
     local strokeColor = get(container, "ScrollBarStrokeColor3") or Color3.fromRGB(33, 33, 33)
-    local strokeTrans = get(container, "ScrollBarStrokeTransparency") or 0
     local SSZ = CONST.SCROLLBAR_SIZE
 
     local bar = Instance.new("Frame")
@@ -345,26 +325,21 @@ function ScrollBar.new(container, isVertical)
     bar.BackgroundColor3 = self.TrackColor
     bar.BorderColor3 = strokeColor
     bar.BorderSizePixel = 0
-    bar.Size = isVertical and UDim2.new(0, SSZ, 1, 0)
-                          or UDim2.new(1, -SSZ, 0, SSZ)
-    bar.Position = isVertical and UDim2.new(1, -SSZ, 0, 0)
-                              or UDim2.new(0, 0, 1, -SSZ)
+    bar.Size = isVertical and UDim2.new(0, SSZ, 1, 0) or UDim2.new(1, -SSZ, 0, SSZ)
+    bar.Position = isVertical and UDim2.new(1, -SSZ, 0, 0) or UDim2.new(0, 0, 1, -SSZ)
     bar.ZIndex = 100
     bar.BackgroundTransparency = self.TrackTransparency
     bar.Visible = false
     bar.Parent = container
     self.BarFrame = bar
 
-    self.UpBtn, self.UpIcon = makeArrowButton(bar, isVertical and 180 or 90, isVertical,
-        self.TrackColor, imageColor, self.TrackTransparency, strokeColor)
+    self.UpBtn, self.UpIcon = makeArrowButton(bar, isVertical and 180 or 90, isVertical, self.TrackColor, imageColor, self.TrackTransparency, strokeColor)
     self.UpBtn.AnchorPoint = Vector2.new(0, 0)
     self.UpBtn.Position = UDim2.new(0, 0, 0, 0)
 
-    self.DownBtn, self.DownIcon = makeArrowButton(bar, isVertical and 0 or -90, isVertical,
-        self.TrackColor, imageColor, self.TrackTransparency, strokeColor)
+    self.DownBtn, self.DownIcon = makeArrowButton(bar, isVertical and 0 or -90, isVertical, self.TrackColor, imageColor, self.TrackTransparency, strokeColor)
     self.DownBtn.AnchorPoint = Vector2.new(isVertical and 0 or 1, isVertical and 1 or 0)
-    self.DownBtn.Position = isVertical and UDim2.new(0, 0, 1, 0)
-                                          or UDim2.new(1, 0, 0, 0)
+    self.DownBtn.Position = isVertical and UDim2.new(0, 0, 1, 0) or UDim2.new(1, 0, 0, 0)
 
     local function hookBtn(btn)
         table.insert(self.Connections, btn.MouseEnter:Connect(function() btn.BackgroundColor3 = self.HoverColor end))
@@ -372,17 +347,16 @@ function ScrollBar.new(container, isVertical)
         table.insert(self.Connections, btn.MouseButton1Down:Connect(function() btn.BackgroundColor3 = self.PressColor end))
         table.insert(self.Connections, btn.MouseButton1Up:Connect(function() btn.BackgroundColor3 = self.HoverColor end))
     end
-    hookBtn(self.UpBtn); hookBtn(self.DownBtn)
+    hookBtn(self.UpBtn)
+    hookBtn(self.DownBtn)
 
     local track = Instance.new("Frame")
     track.Name = "Track"
     track.BackgroundColor3 = self.TrackColor
     track.BackgroundTransparency = self.TrackTransparency
     track.BorderSizePixel = 0
-    track.Size = isVertical and UDim2.new(1, 0, 1, -SSZ * 2)
-                            or UDim2.new(1, -SSZ * 2, 1, 0)
-    track.Position = isVertical and UDim2.new(0, 0, 0, SSZ)
-                                or UDim2.new(0, SSZ, 0, 0)
+    track.Size = isVertical and UDim2.new(1, 0, 1, -SSZ * 2) or UDim2.new(1, -SSZ * 2, 1, 0)
+    track.Position = isVertical and UDim2.new(0, 0, 0, SSZ) or UDim2.new(0, SSZ, 0, 0)
     track.ZIndex = 100
     track.Parent = bar
     self.Track = track
@@ -391,10 +365,8 @@ function ScrollBar.new(container, isVertical)
     thumb.Name = "Thumb"
     thumb.BackgroundColor3 = self.ThumbColor
     thumb.BorderSizePixel = 0
-    thumb.Size = isVertical and UDim2.new(1, -2, 0, 30)
-                            or UDim2.new(0, 30, 1, -2)
-    thumb.Position = isVertical and UDim2.new(0, 1, 0, 0)
-                                or UDim2.new(0, 0, 0, 1)
+    thumb.Size = isVertical and UDim2.new(1, -2, 0, 30) or UDim2.new(0, 30, 1, -2)
+    thumb.Position = isVertical and UDim2.new(0, 1, 0, 0) or UDim2.new(0, 0, 0, 1)
     thumb.ZIndex = 101
     thumb.Visible = false
     thumb.BackgroundTransparency = self.ThumbTransparency
@@ -416,17 +388,14 @@ function ScrollBar.new(container, isVertical)
     table.insert(self.Connections, thumbBtn.MouseButton1Down:Connect(function()
         self.IsDraggingThumb = true
         thumb.BackgroundColor3 = self.HoverColor
-        local p = isVertical and UserInputService:GetMouseLocation().Y
-                             or UserInputService:GetMouseLocation().X
+        local p = isVertical and UserInputService:GetMouseLocation().Y or UserInputService:GetMouseLocation().X
         dragStartMouse = p
-        dragStartOffset = isVertical and thumb.Position.Y.Offset
-                                       or thumb.Position.X.Offset
+        dragStartOffset = isVertical and thumb.Position.Y.Offset or thumb.Position.X.Offset
     end))
 
     table.insert(self.Connections, UserInputService.InputChanged:Connect(function(input)
         if self.IsDraggingThumb and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local p = isVertical and UserInputService:GetMouseLocation().Y
-                                 or UserInputService:GetMouseLocation().X
+            local p = isVertical and UserInputService:GetMouseLocation().Y or UserInputService:GetMouseLocation().X
             local delta = p - dragStartMouse
             local trackSize = isVertical and track.AbsoluteSize.Y or track.AbsoluteSize.X
             local thumbSize = isVertical and thumb.AbsoluteSize.Y or thumb.AbsoluteSize.X
@@ -435,13 +404,11 @@ function ScrollBar.new(container, isVertical)
             local ratio = maxOffset > 0 and (newOffset / maxOffset) or 0
             local maxScroll = math.max(0, self.ContentSize - self.ViewSize)
             if self.OnScroll then self.OnScroll(ratio * maxScroll) end
-        elseif input.UserInputType == Enum.UserInputType.MouseWheel
-               and self.IsVertical and self.BarFrame.Visible then
+        elseif input.UserInputType == Enum.UserInputType.MouseWheel and self.IsVertical and self.BarFrame.Visible then
             local pos = input.Position
             local absPos = self.Container.AbsolutePosition
             local absSize = self.Container.AbsoluteSize
-            if pos.X >= absPos.X and pos.X <= absPos.X + absSize.X
-           and pos.Y >= absPos.Y and pos.Y <= absPos.Y + absSize.Y then
+            if pos.X >= absPos.X and pos.X <= absPos.X + absSize.X and pos.Y >= absPos.Y and pos.Y <= absPos.Y + absSize.Y then
                 local dir = -math.sign(input.Position.Z)
                 local maxScroll = math.max(0, self.ContentSize - self.ViewSize)
                 local newScroll = math.clamp(self.ScrollPos + dir * CONST.SCROLL_STEP, 0, maxScroll)
@@ -530,22 +497,19 @@ function ScrollBar:Destroy()
     if self.BarFrame then self.BarFrame:Destroy() end
 end
 
--- ░░ LuaUEngine ░░────────────────────────────────────────────────────────────
 local LuaUEngine = {}
 LuaUEngine.__index = LuaUEngine
 
 local defaultSyntaxRules = {
-    keyword        = { color = Color3.fromRGB(255, 123, 114) },
-    builtin        = { color = Color3.fromRGB(121, 192, 255) },
+    keyword = { color = Color3.fromRGB(255, 123, 114) },
+    builtin = { color = Color3.fromRGB(121, 192, 255) },
     string_literal = { color = Color3.fromRGB(165, 214, 255) },
-    number         = { color = Color3.fromRGB(121, 192, 255) },
+    number = { color = Color3.fromRGB(121, 192, 255) },
     comment_single = { color = Color3.fromRGB(139, 148, 158) },
-    comment_multi  = { color = Color3.fromRGB(139, 148, 158) },
-    op_add         = { color = Color3.fromRGB(201, 209, 217) },
-    TextColor      = { color = Color3.fromRGB(201, 209, 217) },
+    comment_multi = { color = Color3.fromRGB(139, 148, 158) },
+    op_add = { color = Color3.fromRGB(201, 209, 217) },
+    TextColor = { color = Color3.fromRGB(201, 209, 217) },
 }
-
--- ─── Static helpers ──────────────────────────────────────────────────────────
 
 function LuaUEngine.HighlightFrame(parent, text, config)
     config = config or {}
@@ -684,10 +648,7 @@ function LuaUEngine.newConsole(container, config)
     return console
 end
 
--- ─── Construction ────────────────────────────────────────────────────────────
-
 function LuaUEngine.new(canvasGroup)
-    -- Optional CanvasGroup → Frame conversion (removes the extra render pass).
     if canvasGroup and canvasGroup:IsA("CanvasGroup") then
         local replacement = Instance.new("Frame")
         replacement.Name = canvasGroup.Name
@@ -722,76 +683,64 @@ function LuaUEngine.new(canvasGroup)
     self.Connections = {}
     self.Destroyed = false
 
-    -- Pools
-    self.LinesPool          = {}
-    self.HighlightPool      = {}
-    self.LineNumbersPool    = {}
-    self.MinimapLinesPool   = {}
-    self.FoldButtonsPool    = {}
-    self.IndentGuidesPool   = {}
-    self.AutocompleteRows   = {}
+    self.LinesPool = {}
+    self.HighlightPool = {}
+    self.LineNumbersPool = {}
+    self.MinimapLinesPool = {}
+    self.FoldButtonsPool = {}
+    self.IndentGuidesPool = {}
+    self.AutocompleteRows = {}
 
-    -- State
-    self.FoldedLines        = {}
-    self.CurrentFoldPairs   = {}
-    self.SyntaxRules        = nil
-    self.IsFocused          = false
-    self.IsDragging         = false
-    self.DraggingMinimap    = false
-    self.IsPasting          = false
-    self.CursorIndex        = 0
-    self.SelectionStart     = 0
-    self.ScrollOffset       = Vector2.new(0, 0)
-    self.MinimapScrollY     = 0
-    self.DocumentHeight     = 0
-    self.CachedDocumentWidth= 0
-    self.HeldKey            = nil
-    self.KeyTimer           = 0
-    self.KeyTick            = 0
-    self.BlinkTimer         = 0
-    self.ClickCount         = 0
-    self.LastClickTime      = 0
-    self.LastTypedChar      = ""
-    self.LastTypedTick      = 0
-    self.History            = {{ text = "", cursor = 0, sel = 0 }}
-    self.HistoryIdx         = 1
-    self.SinkActionName     = "LuaUEngineSink_" .. HttpService:GenerateGUID(false)
-    self.FindUI             = nil
-    self.FindMatches        = {}
-    self.CurrentMatchIndex  = 0
-    self.FindTextConn       = nil
-    self.FindResizeConn     = nil
+    self.FoldedLines = {}
+    self.CurrentFoldPairs = {}
+    self.SyntaxRules = nil
+    self.IsFocused = false
+    self.IsDragging = false
+    self.DraggingMinimap = false
+    self.IsPasting = false
+    self.CursorIndex = 0
+    self.SelectionStart = 0
+    self.ScrollOffset = Vector2.new(0, 0)
+    self.MinimapScrollY = 0
+    self.DocumentHeight = 0
+    self.CachedDocumentWidth = 0
+    self.HeldKey = nil
+    self.KeyTimer = 0
+    self.KeyTick = 0
+    self.BlinkTimer = 0
+    self.ClickCount = 0
+    self.LastClickTime = 0
+    self.LastTypedChar = ""
+    self.LastTypedTick = 0
+    self.History = {{ text = "", cursor = 0, sel = 0 }}
+    self.HistoryIdx = 1
+    self.SinkActionName = "LuaUEngineSink_" .. HttpService:GenerateGUID(false)
+    self.FindUI = nil
+    self.FindMatches = {}
+    self.CurrentMatchIndex = 0
+    self.FindTextConn = nil
+    self.FindResizeConn = nil
 
-    -- Suppression set: keys that were down when the editor took focus
-    -- (prevents movement keys from instantly typing into the editor).
-    self.SuppressedKeys     = {}
-    self.PendingRefocus     = false
+    self.SuppressedKeys = {}
+    self.AwaitingRelease = false
 
-    -- Render caches
-    self.CachedText         = nil
-    self.CachedTextSize     = nil
-    self.CachedFont         = nil
-    self.CachedLimitX       = nil
-    self.CachedLimitY       = nil
-    self.CachedLineMap      = nil
+    self.CachedText = nil
+    self.CachedTextSize = nil
+    self.CachedFont = nil
+    self.CachedLimitX = nil
+    self.CachedLimitY = nil
+    self.CachedLineMap = nil
 
-    -- Autocomplete state
-    self.AutocompleteVisible          = false
-    self.AutocompleteMatches          = {}
-    self.AutocompleteIndex            = 1
-    self.AutocompleteSelectionColor   = Color3.fromRGB(45, 90, 160)
-    self.AutocompleteBackgroundColor  = Color3.fromRGB(30, 30, 30)
-    self.AutocompleteTextColor        = Color3.fromRGB(220, 220, 220)
-    self.AutocompleteSelectedTextColor= Color3.fromRGB(255, 255, 255)
-
-    -- Render throttling
-    self.NeedsRender        = true
-    self.LastRenderTime     = 0
-    self.LastCursorPixel    = Vector2.new(-1, -1)
+    self.AutocompleteVisible = false
+    self.AutocompleteMatches = {}
+    self.AutocompleteIndex = 1
+    self.AutocompleteSelectionColor = Color3.fromRGB(45, 90, 160)
+    self.AutocompleteBackgroundColor = Color3.fromRGB(30, 30, 30)
+    self.AutocompleteTextColor = Color3.fromRGB(220, 220, 220)
+    self.AutocompleteSelectedTextColor = Color3.fromRGB(255, 255, 255)
 
     Baseline.Instances[#Baseline.Instances + 1] = self
 
-    -- Current-line highlight
     do
         local f = Instance.new("Frame")
         f.Name = "LuaUEngineCurrentLine"
@@ -804,7 +753,6 @@ function LuaUEngine.new(canvasGroup)
         self.CurrentLineHighlight = f
     end
 
-    -- Line-number containers
     do
         local outer = Instance.new("Frame")
         outer.Name = "LuaUEngineLineNumbers"
@@ -822,7 +770,6 @@ function LuaUEngine.new(canvasGroup)
         self.LineNumbersInner = inner
     end
 
-    -- Minimap
     do
         local outer = Instance.new("Frame")
         outer.Name = "LuaUEngineMinimap"
@@ -849,7 +796,6 @@ function LuaUEngine.new(canvasGroup)
         self.MinimapSlider = slider
     end
 
-    -- Text container
     do
         local c = Instance.new("Frame")
         c.Name = "LuaUEngineTextContainer"
@@ -875,7 +821,6 @@ function LuaUEngine.new(canvasGroup)
         self.IndentGuideContainer = guides
     end
 
-    -- Placeholder
     do
         local ph = Instance.new("TextLabel")
         ph.Name = "PlaceholderTextLabel"
@@ -890,7 +835,6 @@ function LuaUEngine.new(canvasGroup)
         self.PlaceholderLabel = ph
     end
 
-    -- Ghost-text (inline autocomplete preview)
     do
         local g = Instance.new("TextLabel")
         g.Name = "GhostTextLabel"
@@ -905,7 +849,6 @@ function LuaUEngine.new(canvasGroup)
         self.GhostTextLabel = g
     end
 
-    -- Highlight container
     do
         local h = Instance.new("Frame")
         h.Name = "LuaUEngineHighlightContainer"
@@ -916,7 +859,6 @@ function LuaUEngine.new(canvasGroup)
         self.HighlightContainer = h
     end
 
-    -- Blinker (caret)
     do
         local b = Instance.new("Frame")
         b.Name = "LuaUEngineBlinker"
@@ -929,7 +871,6 @@ function LuaUEngine.new(canvasGroup)
         self.Blinker = b
     end
 
-    -- Hidden focus box
     do
         local pb = Instance.new("TextBox")
         pb.Name = "LuaUEnginePasteBox"
@@ -944,7 +885,6 @@ function LuaUEngine.new(canvasGroup)
         self.PasteBox = pb
     end
 
-    -- Autocomplete panel
     do
         local ui = Instance.new("Frame")
         ui.Name = "AutocompleteUI"
@@ -1018,7 +958,6 @@ function LuaUEngine.new(canvasGroup)
     canvasGroup.ClipsDescendants = true
     canvasGroup.Active = true
 
-    -- Scroll bars
     if not canvasGroup:GetAttribute("HideScrollbars") then
         self.VScrollBar = ScrollBar.new(canvasGroup, true)
         self.VScrollBar.OnScroll = function(newY)
@@ -1032,68 +971,50 @@ function LuaUEngine.new(canvasGroup)
         end
     end
 
-    -- PasteBox text -> insert into editor
     table.insert(self.Connections, self.PasteBox:GetPropertyChangedSignal("Text"):Connect(function()
         local text = self.PasteBox.Text
         if text == "" then return end
         task.defer(function()
             if self.PasteBox and self.PasteBox.Text == text then self.PasteBox.Text = "" end
         end)
+        if self.AwaitingRelease then return end
         if text == "\n" or text == "\r\n" or text == "\r" then return end
-        local isManualKeystroke = (#text == 1)
-            and (text == self.LastTypedChar)
-            and ((tick() - self.LastTypedTick) < CONST.PASTE_GAP)
+        local isManualKeystroke = (#text == 1) and (text == self.LastTypedChar) and ((tick() - self.LastTypedTick) < CONST.PASTE_GAP)
         if not isManualKeystroke then self:PasteChunked(text) end
     end))
 
-    -- Do NOT force-recapture focus blindly. Only if the user is still
-    -- clicking within the editor and no movement keys are held.
     table.insert(self.Connections, self.PasteBox.FocusLost:Connect(function()
         if not self.IsFocused then return end
         task.defer(function()
-            if not self.IsFocused or self.Destroyed then return end
-            -- If any sink keys are still held, do not recapture — user is
-            -- likely walking. They must release and click again.
-            local held = false
-            for kc in pairs(self.SuppressedKeys) do
-                if UserInputService:IsKeyDown(kc) then held = true; break end
-            end
-            if not held and self.PasteBox then
-                self.PasteBox:CaptureFocus()
-            end
+            if not self.IsFocused or self.Destroyed or self.AwaitingRelease then return end
+            if self.PasteBox then self.PasteBox:CaptureFocus() end
         end)
     end))
 
-    -- ── Main input hook ────────────────────────────────────────────────────
     table.insert(self.Connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if self.Destroyed then return end
 
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             local pos = input.Position
             local function isInside(gui)
                 if not gui or not gui.Visible then return false end
                 local ap = gui.AbsolutePosition
                 local as = gui.AbsoluteSize
-                return pos.X >= ap.X and pos.X <= ap.X + as.X
-                   and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y
+                return pos.X >= ap.X and pos.X <= ap.X + as.X and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y
             end
             if self.VScrollBar and isInside(self.VScrollBar.BarFrame) then return end
             if self.HScrollBar and isInside(self.HScrollBar.BarFrame) then return end
             if self.FindUI and isInside(self.FindUI) then return end
-            if self.MinimapContainer and self.MinimapContainer.Visible
-               and isInside(self.MinimapContainer) then
+            if self.MinimapContainer and self.MinimapContainer.Visible and isInside(self.MinimapContainer) then
                 self.DraggingMinimap = true
                 self:ScrollToMinimap(pos.Y)
                 return
             end
-            if self.LineNumbersContainer and self.LineNumbersContainer.Visible
-               and isInside(self.LineNumbersContainer) then
+            if self.LineNumbersContainer and self.LineNumbersContainer.Visible and isInside(self.LineNumbersContainer) then
                 self:Focus()
                 return
             end
-            if self.AutocompleteUI.Visible
-               and (isInside(self.AutocompleteUI) or isInside(self.AutocompleteHint)) then
+            if self.AutocompleteUI.Visible and (isInside(self.AutocompleteUI) or isInside(self.AutocompleteHint)) then
                 return
             end
 
@@ -1103,8 +1024,7 @@ function LuaUEngine.new(canvasGroup)
 
                 local relX = (pos.X - self.InnerFrame.AbsolutePosition.X) - 4
                 local relY = (pos.Y - self.InnerFrame.AbsolutePosition.Y) - 4
-                local shiftDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
-                    or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+                local shiftDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
                 local closestIdx = self:GetClosestCursorIndex(relX, relY)
                 local now = tick()
                 if (now - self.LastClickTime) < CONST.DOUBLE_CLICK_MS then
@@ -1142,10 +1062,17 @@ function LuaUEngine.new(canvasGroup)
                 self:Unfocus()
             end
         elseif input.UserInputType == Enum.UserInputType.Keyboard then
-            if gameProcessed then return end
             if not self.IsFocused then return end
 
-            -- Suppress keys that were held before the editor took focus.
+            if self.AwaitingRelease then
+                if KeyMaps.SinkSet[input.KeyCode] then
+                    self.SuppressedKeys[input.KeyCode] = true
+                end
+                return
+            end
+
+            if gameProcessed and not KeyMaps.SinkSet[input.KeyCode] then return end
+
             if self.SuppressedKeys[input.KeyCode] then return end
 
             if self.AutocompleteVisible then
@@ -1178,13 +1105,12 @@ function LuaUEngine.new(canvasGroup)
                 end
             end
 
-            local shiftDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
-                or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
-            local ctrlDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
-                or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+            local shiftDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+            local ctrlDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
 
             if ctrlDown and shiftDown and input.KeyCode == Enum.KeyCode.F then
-                self:Format() ; return
+                self:Format()
+                return
             end
             if ctrlDown and input.KeyCode == Enum.KeyCode.A then
                 self.SelectionStart = 0
@@ -1192,18 +1118,23 @@ function LuaUEngine.new(canvasGroup)
                 self:UpdateBlinker(true)
                 return
             elseif ctrlDown and input.KeyCode == Enum.KeyCode.Z then
-                self:Undo() ; return
+                self:Undo()
+                return
             elseif ctrlDown and input.KeyCode == Enum.KeyCode.Y then
-                self:Redo() ; return
+                self:Redo()
+                return
             elseif ctrlDown and input.KeyCode == Enum.KeyCode.C then
-                self:Copy() ; return
+                self:Copy()
+                return
             elseif ctrlDown and input.KeyCode == Enum.KeyCode.X then
-                self:Cut() ; return
+                self:Cut()
+                return
             elseif ctrlDown and input.KeyCode == Enum.KeyCode.V then
                 self.LastTypedChar = ""
                 return
             elseif ctrlDown and input.KeyCode == Enum.KeyCode.F then
-                self:ToggleFindUI() ; return
+                self:ToggleFindUI()
+                return
             end
 
             local kc = input.KeyCode
@@ -1226,18 +1157,13 @@ function LuaUEngine.new(canvasGroup)
         end
     end))
 
-    -- Dragging / minimap
     table.insert(self.Connections, UserInputService.InputChanged:Connect(function(input)
         if self.Destroyed then return end
-        if self.DraggingMinimap
-           and (input.UserInputType == Enum.UserInputType.MouseMovement
-                or input.UserInputType == Enum.UserInputType.Touch) then
+        if self.DraggingMinimap and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             self:ScrollToMinimap(input.Position.Y)
             return
         end
-        if self.IsDragging
-           and (input.UserInputType == Enum.UserInputType.MouseMovement
-                or input.UserInputType == Enum.UserInputType.Touch) then
+        if self.IsDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local pos = input.Position
             local relX = (pos.X - self.InnerFrame.AbsolutePosition.X) - 4
             local relY = (pos.Y - self.InnerFrame.AbsolutePosition.Y) - 4
@@ -1248,20 +1174,17 @@ function LuaUEngine.new(canvasGroup)
 
     table.insert(self.Connections, UserInputService.InputEnded:Connect(function(input)
         if self.Destroyed then return end
-        -- Clear suppressed keys once released.
         if input.KeyCode and self.SuppressedKeys[input.KeyCode] then
             self.SuppressedKeys[input.KeyCode] = nil
         end
         if input.KeyCode == self.HeldKey then
             self.HeldKey = nil
-        elseif input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
+        elseif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             self.IsDragging = false
             self.DraggingMinimap = false
         end
     end))
 
-    -- Per-frame tick: caret blink + key repeat
     table.insert(self.Connections, RunService.RenderStepped:Connect(function(dt)
         if self.Destroyed then return end
         if dt > 0.1 then dt = 0 end
@@ -1272,10 +1195,8 @@ function LuaUEngine.new(canvasGroup)
                 self.KeyTick = self.KeyTick + dt
                 if self.KeyTick > CONST.KEY_REPEAT_TICK then
                     self.KeyTick = 0
-                    local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
-                        or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
-                    local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
-                        or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+                    local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+                    local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
                     self:ProcessKey(self.HeldKey, shift, ctrl)
                 end
             end
@@ -1303,12 +1224,12 @@ function LuaUEngine.new(canvasGroup)
         if self.Destroyed then return end
         local value = canvasGroup:GetAttribute(attributeName)
         local updateAttrs = {
-            Text=true, TextSize=true, Font=true, Minimap=true,
-            HighlightColor=true, PasswordMode=true, HideScrollbars=true,
-            Wrapped=true, Lines=true, LineNumberColor3=true, TextColor3=true,
-            AutoHeight=true, StrokeColor3=true, StrokeTransparency=true,
-            StrokeThickness=true, IndentGuideColor3=true,
-            IndentGuideTransparency=true, IndentGuideThickness=true,
+            Text = true, TextSize = true, Font = true, Minimap = true,
+            HighlightColor = true, PasswordMode = true, HideScrollbars = true,
+            Wrapped = true, Lines = true, LineNumberColor3 = true, TextColor3 = true,
+            AutoHeight = true, StrokeColor3 = true, StrokeTransparency = true,
+            StrokeThickness = true, IndentGuideColor3 = true,
+            IndentGuideTransparency = true, IndentGuideThickness = true,
         }
         if updateAttrs[attributeName] then
             self:UpdateBlinker(true)
@@ -1321,7 +1242,6 @@ function LuaUEngine.new(canvasGroup)
         end
     end))
 
-    -- Proxy with attribute-routing
     local proxyObj = setmetatable({}, {
         __index = function(_, key)
             local av = canvasGroup:GetAttribute(key)
@@ -1333,19 +1253,19 @@ function LuaUEngine.new(canvasGroup)
         end,
         __newindex = function(_, key, value)
             local allowed = {
-                Text=true, MultiLine=true, Wrapped=true, Minimap=true,
-                SmoothBlinker=true, TextSize=true, TextColor3=true,
-                BlinkerColor=true, BlinkerColor3=true, HighlightColor=true, Font=true,
-                PlaceholderText=true, PlaceholderColor3=true, AutoHeight=true,
-                MaxLength=true, PasswordMode=true, ReadOnly=true, HideScrollbars=true,
-                TabIndex=true, Lines=true, LineNumberColor3=true,
-                StrokeColor3=true, StrokeTransparency=true, StrokeThickness=true,
-                IndentGuideColor3=true, IndentGuideTransparency=true, IndentGuideThickness=true,
-                ScrollBarTrackColor3=true, ScrollBarTrackTransparency=true,
-                ScrollBarThumbColor3=true, ScrollBarThumbTransparency=true,
-                ScrollBarHoverColor3=true, ScrollBarPressColor3=true,
-                ScrollBarImageColor3=true, ScrollBarStrokeColor3=true,
-                ScrollBarStrokeTransparency=true,
+                Text = true, MultiLine = true, Wrapped = true, Minimap = true,
+                SmoothBlinker = true, TextSize = true, TextColor3 = true,
+                BlinkerColor = true, BlinkerColor3 = true, HighlightColor = true, Font = true,
+                PlaceholderText = true, PlaceholderColor3 = true, AutoHeight = true,
+                MaxLength = true, PasswordMode = true, ReadOnly = true, HideScrollbars = true,
+                TabIndex = true, Lines = true, LineNumberColor3 = true,
+                StrokeColor3 = true, StrokeTransparency = true, StrokeThickness = true,
+                IndentGuideColor3 = true, IndentGuideTransparency = true, IndentGuideThickness = true,
+                ScrollBarTrackColor3 = true, ScrollBarTrackTransparency = true,
+                ScrollBarThumbColor3 = true, ScrollBarThumbTransparency = true,
+                ScrollBarHoverColor3 = true, ScrollBarPressColor3 = true,
+                ScrollBarImageColor3 = true, ScrollBarStrokeColor3 = true,
+                ScrollBarStrokeTransparency = true,
             }
             if key == "Text" and type(value) == "string" then
                 value = value:gsub("\t", "    ")
@@ -1372,8 +1292,6 @@ function LuaUEngine.new(canvasGroup)
 
     return proxyObj
 end
-
--- ─── Theme / styling ─────────────────────────────────────────────────────────
 
 function LuaUEngine:ApplyThemeRules(rules)
     self.SyntaxRules = rules
@@ -1428,13 +1346,10 @@ function LuaUEngine:ApplyStrokeToLabel(gui)
     end
 end
 
--- ─── Format ──────────────────────────────────────────────────────────────────
-
 function LuaUEngine:Format()
     local rawText = self.CanvasGroup:GetAttribute("Text") or ""
     if rawText == "" then return end
 
-    -- Split lines efficiently.
     local lines = {}
     local start = 1
     while true do
@@ -1460,8 +1375,7 @@ function LuaUEngine:Format()
         else
             local leadingClose = 0
             local firstWord = trimmed:match("^([%w_]+)")
-            if firstWord == "end" or firstWord == "until"
-               or firstWord == "else" or firstWord == "elseif" then
+            if firstWord == "end" or firstWord == "until" or firstWord == "else" or firstWord == "elseif" then
                 leadingClose = 1
             elseif trimmed:sub(1, 1):match("[%]%)}]") then
                 leadingClose = 1
@@ -1495,8 +1409,6 @@ function LuaUEngine:ScrollToMinimap(mouseY)
     self.ScrollOffset = Vector2.new(self.ScrollOffset.X, sMain)
     self:UpdateBlinker(false)
 end
-
--- ─── Find UI ─────────────────────────────────────────────────────────────────
 
 function LuaUEngine:ToggleFindUI()
     if self.FindUI then self:CloseFindUI() else self:OpenFindUI() end
@@ -1912,8 +1824,6 @@ function LuaUEngine:CloseFindUI()
     self:UpdateBlinker(true)
 end
 
--- ─── Import / theme loading ──────────────────────────────────────────────────
-
 function LuaUEngine:Import(module)
     if typeof(module) == "string" then
         local sm = self.CanvasGroup:FindFirstChild(module)
@@ -1955,8 +1865,6 @@ function LuaUEngine:ImportTheme(url)
         end)
     end)
 end
-
--- ─── Syntax ──────────────────────────────────────────────────────────────────
 
 function LuaUEngine:GetSyntaxStateAt(text, targetIdx, startIdx, startStateStr)
     local i = startIdx or 1
@@ -2047,16 +1955,15 @@ function LuaUEngine:ApplySyntax(lineText, startStateStr)
         return default
     end
     local commentHex = hexOf("comment_single", "#6272A4")
-    local stringHex  = hexOf("string_literal", "#F1FA8C")
-    local opHex      = hexOf("op_add", "#BCBEC8")
+    local stringHex = hexOf("string_literal", "#F1FA8C")
+    local opHex = hexOf("op_add", "#BCBEC8")
     local defaultHex = hexOf("TextColor", "#F8F8F2")
 
     if state and state ~= "none" then
         local sType, sClose = state:match("^(.-)_(.-)$")
         if not sType then sType, sClose = "comment", "\n" end
         if sClose == "\\n" then
-            results[#results + 1] = '<font color="' .. commentHex .. '">'
-                .. Utils.escapeRichText(lineText) .. "</font>"
+            results[#results + 1] = '<font color="' .. commentHex .. '">' .. Utils.escapeRichText(lineText) .. "</font>"
             return table.concat(results)
         end
         local closeHex = (sType == "comment") and commentHex or stringHex
@@ -2076,13 +1983,11 @@ function LuaUEngine:ApplySyntax(lineText, startStateStr)
         end
         if endIdx then
             local chunk = lineText:sub(i, (endIdx + #sClose) - 1)
-            results[#results + 1] = '<font color="' .. closeHex .. '">'
-                .. Utils.escapeRichText(chunk) .. "</font>"
+            results[#results + 1] = '<font color="' .. closeHex .. '">' .. Utils.escapeRichText(chunk) .. "</font>"
             i = endIdx + #sClose
             state = "none"
         else
-            results[#results + 1] = '<font color="' .. closeHex .. '">'
-                .. Utils.escapeRichText(lineText:sub(i)) .. "</font>"
+            results[#results + 1] = '<font color="' .. closeHex .. '">' .. Utils.escapeRichText(lineText:sub(i)) .. "</font>"
             return table.concat(results)
         end
     end
@@ -2093,7 +1998,6 @@ function LuaUEngine:ApplySyntax(lineText, startStateStr)
             local s = i
             while i <= len and lineText:sub(i, i):match("[%w_]") do i = i + 1 end
             local word = lineText:sub(s, i - 1)
-            -- Peek for function call
             local j = i
             while j <= len and lineText:sub(j, j):match("%s") do j = j + 1 end
             local isCall = j <= len and lineText:sub(j, j) == "("
@@ -2113,19 +2017,16 @@ function LuaUEngine:ApplySyntax(lineText, startStateStr)
                 hex = hexOf("function_name", "#50FA7B")
             end
             if bold then
-                results[#results + 1] = '<font color="' .. hex .. '" weight="SemiBold">'
-                    .. Utils.escapeRichText(word) .. "</font>"
+                results[#results + 1] = '<font color="' .. hex .. '" weight="SemiBold">' .. Utils.escapeRichText(word) .. "</font>"
             else
-                results[#results + 1] = '<font color="' .. hex .. '">'
-                    .. Utils.escapeRichText(word) .. "</font>"
+                results[#results + 1] = '<font color="' .. hex .. '">' .. Utils.escapeRichText(word) .. "</font>"
             end
         elseif c:match("%d") then
             local s = i
             while i <= len and lineText:sub(i, i):match("[%d%.]") do i = i + 1 end
             local num = lineText:sub(s, i - 1)
             local hex = hexOf("num_integer", "#FFB86C")
-            results[#results + 1] = '<font color="' .. hex .. '">'
-                .. Utils.escapeRichText(num) .. "</font>"
+            results[#results + 1] = '<font color="' .. hex .. '">' .. Utils.escapeRichText(num) .. "</font>"
         elseif c == '"' or c == "'" then
             local s = i
             local q = c
@@ -2140,16 +2041,14 @@ function LuaUEngine:ApplySyntax(lineText, startStateStr)
                 i = nq + 1
             end
             local str = lineText:sub(s, i - 1)
-            results[#results + 1] = '<font color="' .. stringHex .. '">'
-                .. Utils.escapeRichText(str) .. "</font>"
+            results[#results + 1] = '<font color="' .. stringHex .. '">' .. Utils.escapeRichText(str) .. "</font>"
         elseif c == "[" and lineText:sub(i, i + 20):match("^%[=*%[") then
             local s = i
             local m = lineText:sub(i, i + 20):match("^%[=*%[")
             local closeStr = "]" .. string.rep("=", #m - 2) .. "]"
             local e = lineText:find(closeStr, i + #m, true)
             if e then i = e + #closeStr else i = len + 1 end
-            results[#results + 1] = '<font color="' .. stringHex .. '">'
-                .. Utils.escapeRichText(lineText:sub(s, i - 1)) .. "</font>"
+            results[#results + 1] = '<font color="' .. stringHex .. '">' .. Utils.escapeRichText(lineText:sub(s, i - 1)) .. "</font>"
         elseif c == "-" and lineText:sub(i + 1, i + 1) == "-" then
             local s = i
             local m = lineText:sub(i + 2, i + 22):match("^%[=*%[")
@@ -2160,8 +2059,7 @@ function LuaUEngine:ApplySyntax(lineText, startStateStr)
             else
                 i = len + 1
             end
-            results[#results + 1] = '<font color="' .. commentHex .. '">'
-                .. Utils.escapeRichText(lineText:sub(s, i - 1)) .. "</font>"
+            results[#results + 1] = '<font color="' .. commentHex .. '">' .. Utils.escapeRichText(lineText:sub(s, i - 1)) .. "</font>"
         elseif c:match("[%p]") then
             local op2 = lineText:sub(i, i + 1)
             local rule = KeyMaps.Operators[op2]
@@ -2183,19 +2081,15 @@ function LuaUEngine:ApplySyntax(lineText, startStateStr)
                         math.floor(cc.B * 255 + 0.5))
                 end
             end
-            results[#results + 1] = '<font color="' .. hex .. '">'
-                .. Utils.escapeRichText(opStr) .. "</font>"
+            results[#results + 1] = '<font color="' .. hex .. '">' .. Utils.escapeRichText(opStr) .. "</font>"
             i = i + step
         else
-            results[#results + 1] = '<font color="' .. defaultHex .. '">'
-                .. Utils.escapeRichText(c) .. "</font>"
+            results[#results + 1] = '<font color="' .. defaultHex .. '">' .. Utils.escapeRichText(c) .. "</font>"
             i = i + 1
         end
     end
     return table.concat(results)
 end
-
--- ─── Text access ─────────────────────────────────────────────────────────────
 
 function LuaUEngine:GetDisplayText()
     local raw = self.CanvasGroup:GetAttribute("Text") or ""
@@ -2204,8 +2098,6 @@ function LuaUEngine:GetDisplayText()
     end
     return raw
 end
-
--- ─── History ─────────────────────────────────────────────────────────────────
 
 function LuaUEngine:PushHistory()
     local cur = self.CanvasGroup:GetAttribute("Text") or ""
@@ -2236,8 +2128,6 @@ function LuaUEngine:Redo()
         self:UpdateBlinker(true)
     end
 end
-
--- ─── Clipboard ───────────────────────────────────────────────────────────────
 
 function LuaUEngine:Copy()
     if self.SelectionStart ~= self.CursorIndex then
@@ -2296,20 +2186,18 @@ function LuaUEngine:Paste()
     end
 end
 
--- ─── Focus ───────────────────────────────────────────────────────────────────
-
 function LuaUEngine:Focus()
     if not self.IsFocused then
         self.IsFocused = true
         self.Blinker.Visible = self.SelectionStart == self.CursorIndex
         self.BlinkTimer = 0
 
-        -- Record any keys already held so WASD doesn't type into the editor
-        -- the moment it steals focus.
         table.clear(self.SuppressedKeys)
+        local anyHeld = false
         for kc in pairs(KeyMaps.SinkSet) do
             if UserInputService:IsKeyDown(kc) then
                 self.SuppressedKeys[kc] = true
+                anyHeld = true
             end
         end
 
@@ -2317,14 +2205,44 @@ function LuaUEngine:Focus()
             self.SinkActionName,
             function() return Enum.ContextActionResult.Sink end,
             false, unpack(KeyMaps.SinkKeys))
+
+        self.AwaitingRelease = anyHeld
+        if anyHeld then
+            local pollToken = (self.ReleasePollToken or 0) + 1
+            self.ReleasePollToken = pollToken
+            task.spawn(function()
+                while self.IsFocused and not self.Destroyed and self.ReleasePollToken == pollToken do
+                    local stillHeld = false
+                    for kc in pairs(KeyMaps.SinkSet) do
+                        if UserInputService:IsKeyDown(kc) then
+                            self.SuppressedKeys[kc] = true
+                            stillHeld = true
+                        end
+                    end
+                    if not stillHeld then break end
+                    task.wait(CONST.RELEASE_POLL)
+                end
+                if self.IsFocused and not self.Destroyed and self.ReleasePollToken == pollToken then
+                    self.AwaitingRelease = false
+                    if self.PasteBox then self.PasteBox:CaptureFocus() end
+                end
+            end)
+        else
+            self.PasteBox:CaptureFocus()
+        end
+    else
+        if not self.AwaitingRelease then
+            self.PasteBox:CaptureFocus()
+        end
     end
-    self.PasteBox:CaptureFocus()
     self:UpdateBlinker(true)
 end
 
 function LuaUEngine:Unfocus()
     if not self.IsFocused then return end
     self.IsFocused = false
+    self.AwaitingRelease = false
+    self.ReleasePollToken = (self.ReleasePollToken or 0) + 1
     self.Blinker.Visible = false
     self.HeldKey = nil
     self.IsDragging = false
@@ -2335,8 +2253,6 @@ function LuaUEngine:Unfocus()
     ContextActionService:UnbindAction(self.SinkActionName)
     self.PasteBox:ReleaseFocus()
 end
-
--- ─── Autocomplete ────────────────────────────────────────────────────────────
 
 function LuaUEngine:HideAutocomplete()
     self.AutocompleteVisible = false
@@ -2483,18 +2399,16 @@ function LuaUEngine:UpdateAutocompleteUI()
     self:RenderAutocomplete()
 end
 
--- ─── Key processing ──────────────────────────────────────────────────────────
-
 function LuaUEngine:ProcessKey(keyCode, isShiftDown, isCtrlDown)
-    -- Never process keys that were held when focus was acquired (bug fix).
+    if self.AwaitingRelease then return end
     if self.SuppressedKeys[keyCode] then return end
 
     local readonly = self.CanvasGroup:GetAttribute("ReadOnly")
-    if (readonly or self.IsPasting) then
+    if readonly or self.IsPasting then
         if keyCode ~= Enum.KeyCode.Left and keyCode ~= Enum.KeyCode.Right
-       and keyCode ~= Enum.KeyCode.Up and keyCode ~= Enum.KeyCode.Down
-       and keyCode ~= Enum.KeyCode.Home and keyCode ~= Enum.KeyCode.End
-       and keyCode ~= Enum.KeyCode.PageUp and keyCode ~= Enum.KeyCode.PageDown then
+            and keyCode ~= Enum.KeyCode.Up and keyCode ~= Enum.KeyCode.Down
+            and keyCode ~= Enum.KeyCode.Home and keyCode ~= Enum.KeyCode.End
+            and keyCode ~= Enum.KeyCode.PageUp and keyCode ~= Enum.KeyCode.PageDown then
             return
         end
     end
@@ -2574,11 +2488,8 @@ function LuaUEngine:ProcessKey(keyCode, isShiftDown, isCtrlDown)
             local lineBefore = before:match("[^\n]*$") or ""
             local indent = lineBefore:match("^([ \t]*)") or ""
             local prevWord = lineBefore:match("([%w_]+)%s*$")
-            local needsEnd = prevWord == "then" or prevWord == "do"
-                or prevWord == "repeat" or prevWord == "function"
-            if needsEnd
-               or lineBefore:match("function%s*.*%(.*%)%s*$")
-               or lineBefore:match("^%s*do%s*$") then
+            local needsEnd = prevWord == "then" or prevWord == "do" or prevWord == "repeat" or prevWord == "function"
+            if needsEnd or lineBefore:match("function%s*.*%(.*%)%s*$") or lineBefore:match("^%s*do%s*$") then
                 local ins = "\n" .. indent .. "    \n" .. indent .. "end"
                 self.CanvasGroup:SetAttribute("Text", before .. ins .. after)
                 self.CursorIndex = self.CursorIndex + 1 + #indent + 4
@@ -2588,9 +2499,7 @@ function LuaUEngine:ProcessKey(keyCode, isShiftDown, isCtrlDown)
                 local ins = "\n" .. indent .. "    \n" .. indent
                 self.CanvasGroup:SetAttribute("Text", before .. ins .. after)
                 self.CursorIndex = self.CursorIndex + 1 + #indent + 4
-            elseif lineBefore:match("%{%s*$")
-                or lineBefore:match("%(%s*$")
-                or lineBefore:match("%[%s*$") then
+            elseif lineBefore:match("%{%s*$") or lineBefore:match("%(%s*$") or lineBefore:match("%[%s*$") then
                 local ins = "\n" .. indent .. "    "
                 self.CanvasGroup:SetAttribute("Text", before .. ins .. after)
                 self.CursorIndex = self.CursorIndex + #ins
@@ -2641,8 +2550,7 @@ function LuaUEngine:ProcessKey(keyCode, isShiftDown, isCtrlDown)
         if idx > 1 then
             local prev = lm[idx - 1]
             local rEnd = prev.renderEndIdx or prev.endIdx
-            local sub = (prev.startIdx <= self.CursorIndex)
-                and dispText:sub(prev.startIdx, math.min(self.CursorIndex, rEnd)) or ""
+            local sub = (prev.startIdx <= self.CursorIndex) and dispText:sub(prev.startIdx, math.min(self.CursorIndex, rEnd)) or ""
             local l = utf8.len(sub) or #sub
             local cw = Utils.getTextSize("A", ts, font, Vector2.new(10000, 10000)).X
             self.CursorIndex = self:GetClosestIndexInLine(prev, l * cw, dispText, ts, font)
@@ -2666,8 +2574,7 @@ function LuaUEngine:ProcessKey(keyCode, isShiftDown, isCtrlDown)
             local nxt = lm[idx + 1]
             local cur = lm[idx]
             local rEnd = cur.renderEndIdx or cur.endIdx
-            local sub = (cur.startIdx <= self.CursorIndex)
-                and dispText:sub(cur.startIdx, math.min(self.CursorIndex, rEnd)) or ""
+            local sub = (cur.startIdx <= self.CursorIndex) and dispText:sub(cur.startIdx, math.min(self.CursorIndex, rEnd)) or ""
             local l = utf8.len(sub) or #sub
             local cw = Utils.getTextSize("A", ts, font, Vector2.new(10000, 10000)).X
             self.CursorIndex = self:GetClosestIndexInLine(nxt, l * cw, dispText, ts, font)
@@ -2722,8 +2629,7 @@ function LuaUEngine:ProcessKey(keyCode, isShiftDown, isCtrlDown)
                 idx = i; break
             end
         end
-        local tgt = (keyCode == Enum.KeyCode.PageUp)
-            and math.max(1, idx - vis) or math.min(#lm, idx + vis)
+        local tgt = (keyCode == Enum.KeyCode.PageUp) and math.max(1, idx - vis) or math.min(#lm, idx + vis)
         self.CursorIndex = lm[tgt].renderEndIdx or lm[tgt].endIdx
         if not isShiftDown then self.SelectionStart = self.CursorIndex end
         self:HideAutocomplete()
@@ -2767,9 +2673,9 @@ function LuaUEngine:AppendText(character)
     local before = txt:sub(1, self.CursorIndex)
     local after = txt:sub(self.CursorIndex + 1)
 
-    local pairsMap = { ["("]=")", ["{"]="}", ["["]="]" }
-    local quoteMap = { ['"']='"', ["'"]="'", ["`"]="`" }
-    local closeSet = { [")"]=true, ["}"]=true, ["]"]=true }
+    local pairsMap = { ["("] = ")", ["{"] = "}", ["["] = "]" }
+    local quoteMap = { ['"'] = '"', ["'"] = "'", ["`"] = "`" }
+    local closeSet = { [")"] = true, ["}"] = true, ["]"] = true }
 
     if (quoteMap[character] or closeSet[character]) and after:sub(1, 1) == character then
         self.CursorIndex = self.CursorIndex + 1
@@ -2793,7 +2699,6 @@ function LuaUEngine:AppendText(character)
     local result = before .. character .. after
     self.CanvasGroup:SetAttribute("Text", result)
 
-    -- Auto-unindent block terminators.
     local line = result:sub(1, self.CursorIndex):match("[^\n]*$")
     if line and (line:match("^%s*end$") or line:match("^%s*until$")
         or line:match("^%s*else$") or line:match("^%s*elseif.*$")
@@ -2825,8 +2730,8 @@ function LuaUEngine:RemoveChar()
         local after = txt:sub(self.CursorIndex + 1)
         local prev = before:sub(-1)
         local nxt = after:sub(1, 1)
-        local pairsMap = { ["("]=")", ["{"]="}", ["["]="]" }
-        local quoteMap = { ['"']='"', ["'"]="'", ["`"]="`" }
+        local pairsMap = { ["("] = ")", ["{"] = "}", ["["] = "]" }
+        local quoteMap = { ['"'] = '"', ["'"] = "'", ["`"] = "`" }
         if pairsMap[prev] == nxt or (quoteMap[prev] and quoteMap[prev] == nxt) then
             after = after:sub(2)
         end
@@ -2841,8 +2746,6 @@ function LuaUEngine:RemoveChar()
     end
     self:UpdateAutocompleteUI()
 end
-
--- ─── Layout helpers ──────────────────────────────────────────────────────────
 
 function LuaUEngine:GetLimit()
     local wrapped = self.CanvasGroup:GetAttribute("Wrapped") or false
@@ -2861,9 +2764,9 @@ end
 
 function LuaUEngine:GetLineMapCached(text, ts, font, limit)
     if self.CachedText == text and self.CachedTextSize == ts
-       and self.CachedFont == font
-       and self.CachedLimitX == limit.X
-       and self.CachedLimitY == limit.Y then
+        and self.CachedFont == font
+        and self.CachedLimitX == limit.X
+        and self.CachedLimitY == limit.Y then
         return self.CachedLineMap
     end
     self.CachedText = text
@@ -2889,7 +2792,6 @@ function LuaUEngine:GetLineMap(text, ts, font, limit)
         pLines[#pLines + 1] = { text = "", startIdx = len + 1, endIdx = len }
     end
 
-    -- Fold pairs
     local stack = {}
     local foldPairs = {}
     for i = 1, #pLines do
@@ -3040,8 +2942,6 @@ function LuaUEngine:GetClosestCursorIndex(clickX, clickY)
     return self:GetClosestIndexInLine(opt, clickX, text, ts, font)
 end
 
--- ─── Main render pass ────────────────────────────────────────────────────────
-
 function LuaUEngine:UpdateBlinker(autoScroll)
     if self.Destroyed then return end
     if autoScroll == nil then autoScroll = true end
@@ -3108,7 +3008,6 @@ function LuaUEngine:UpdateBlinker(autoScroll)
         end
     end
 
-    -- Cursor position
     local curX, curY = 0, 0
     local curH = defaultH
     local activeLine = 1
@@ -3120,8 +3019,7 @@ function LuaUEngine:UpdateBlinker(autoScroll)
             if self.CursorIndex >= (line.startIdx - 1) and self.CursorIndex <= line.endIdx then
                 activeLine = lastSeenLine
                 local rEnd = line.renderEndIdx or line.endIdx
-                local sub = (line.startIdx <= self.CursorIndex)
-                    and dispText:sub(line.startIdx, math.min(self.CursorIndex, rEnd)) or ""
+                local sub = (line.startIdx <= self.CursorIndex) and dispText:sub(line.startIdx, math.min(self.CursorIndex, rEnd)) or ""
                 local cw = Utils.getTextSize("A", ts, font, Vector2.new(10000, 10000)).X
                 local l = utf8.len(sub) or #sub
                 curX = l * cw
@@ -3159,7 +3057,6 @@ function LuaUEngine:UpdateBlinker(autoScroll)
         self.HScrollBar:UpdateMetrics(viewportW + 8, docW, soX)
     end
 
-    -- Current-line highlight
     if hasLines and self.IsFocused then
         self.CurrentLineHighlight.Visible = true
         local targetPos = UDim2.new(0, 0, 0, (4 + curY) - soY)
@@ -3176,7 +3073,6 @@ function LuaUEngine:UpdateBlinker(autoScroll)
         self.CurrentLineHighlight.Visible = false
     end
 
-    -- Visible range via binary search
     local viewTop = soY
     local viewBot = soY + viewportH + 16
     local firstIdx, lastIdx = 1, #lm
@@ -3200,13 +3096,11 @@ function LuaUEngine:UpdateBlinker(autoScroll)
     end
 
     local bracketColor = Color3.fromRGB(80, 80, 80)
-    if type(self.SyntaxRules) == "table"
-       and self.SyntaxRules.SelectionBackgroundColor
-       and self.SyntaxRules.SelectionBackgroundColor.color then
+    if type(self.SyntaxRules) == "table" and self.SyntaxRules.SelectionBackgroundColor
+        and self.SyntaxRules.SelectionBackgroundColor.color then
         bracketColor = self.SyntaxRules.SelectionBackgroundColor.color
     end
 
-    -- Bracket matching
     local matchIdx1, matchIdx2
     if self.SelectionStart == self.CursorIndex and self.IsFocused then
         local cc = dispText:sub(self.CursorIndex, self.CursorIndex)
@@ -3216,8 +3110,8 @@ function LuaUEngine:UpdateBlinker(autoScroll)
             ci = self.CursorIndex + 1
         end
         if cc:match("[%[%(%{%]%)%}]") then
-            local pairsFwd = { ["("]=")", ["{"]="}", ["["]="]" }
-            local pairsRev = { [")"]="(", ["}"]="{", ["]"]="[" }
+            local pairsFwd = { ["("] = ")", ["{"] = "}", ["["] = "]" }
+            local pairsRev = { [")"] = "(", ["}"] = "{", ["]"] = "[" }
             local dir = pairsFwd[cc] and 1 or -1
             local target = pairsFwd[cc] or pairsRev[cc]
             local depth = 0
@@ -3238,7 +3132,6 @@ function LuaUEngine:UpdateBlinker(autoScroll)
     local cw = Utils.getTextSize("A", ts, font, Vector2.new(10000, 10000)).X
     if cw <= 0 then cw = 8 end
 
-    -- Syntax state seeding
     local syntaxState = "none"
     local processedUpTo = 1
     if #lm > 0 and firstIdx > 1 then
@@ -3255,7 +3148,6 @@ function LuaUEngine:UpdateBlinker(autoScroll)
     local visLines, visHighlights, visNums, visFolds, visGuides = 0, 0, 0, 0, 0
     local lastIndentLevel = 0
 
-    -- Reusable closure for rendering a highlight rect
     local highlightLine
     do
         local highlightContainer = self.HighlightContainer
@@ -3325,8 +3217,7 @@ function LuaUEngine:UpdateBlinker(autoScroll)
             end
 
             local rEnd = lineData.renderEndIdx or lineData.endIdx
-            local stringOnLine = (lineData.startIdx <= rEnd)
-                and dispText:sub(lineData.startIdx, rEnd) or ""
+            local stringOnLine = (lineData.startIdx <= rEnd) and dispText:sub(lineData.startIdx, rEnd) or ""
 
             if lineData.lineNumber and not lineData.isFolded then
                 local leading = stringOnLine:match("^([ \t]*)") or ""
@@ -3352,7 +3243,6 @@ function LuaUEngine:UpdateBlinker(autoScroll)
                 guide.Visible = true
             end
 
-            -- Inline autocomplete ghost
             local ghost = ""
             if self.AutocompleteVisible and self.IsFocused and #self.AutocompleteMatches > 0 then
                 local m = self.AutocompleteMatches[self.AutocompleteIndex]
@@ -3360,16 +3250,13 @@ function LuaUEngine:UpdateBlinker(autoScroll)
                     local curWord = Utils.getWordBeforeCursor(dispText, self.CursorIndex)
                     local after = dispText:sub(self.CursorIndex + 1, self.CursorIndex + 1)
                     if curWord ~= ""
-                       and m.word:lower():sub(1, #curWord) == curWord:lower()
-                       and #m.word > #curWord
-                       and (after == "" or after:match("[%s%p]")) then
-                        if self.CursorIndex >= (lineData.startIdx - 1)
-                           and self.CursorIndex <= lineData.endIdx then
+                        and m.word:lower():sub(1, #curWord) == curWord:lower()
+                        and #m.word > #curWord
+                        and (after == "" or after:match("[%s%p]")) then
+                        if self.CursorIndex >= (lineData.startIdx - 1) and self.CursorIndex <= lineData.endIdx then
                             ghost = m.word:sub(#curWord + 1)
                             local cil = self.CursorIndex - lineData.startIdx + 1
-                            stringOnLine = stringOnLine:sub(1, cil)
-                                .. string.rep(" ", #ghost)
-                                .. stringOnLine:sub(cil + 1)
+                            stringOnLine = stringOnLine:sub(1, cil) .. string.rep(" ", #ghost) .. stringOnLine:sub(cil + 1)
                         end
                     end
                 end
@@ -3393,7 +3280,6 @@ function LuaUEngine:UpdateBlinker(autoScroll)
             label.Visible = true
             self:ApplyStrokeToLabel(label)
 
-            -- Line number + fold button
             if hasLines and lineData.lineNumber then
                 visNums = visNums + 1
                 local numLabel = self.LineNumbersPool[visNums]
@@ -3453,8 +3339,7 @@ function LuaUEngine:UpdateBlinker(autoScroll)
                     fb.ImageRectOffset = Vector2.new(144, 16)
                     fb.ImageRectSize = Vector2.new(16, 16)
                     fb.Rotation = self.FoldedLines[lineData.lineNumber] and 0 or 90
-                    if fb:GetAttribute("IsHovered")
-                       or (lineData.lineNumber == activeLine and self.IsFocused) then
+                    if fb:GetAttribute("IsHovered") or (lineData.lineNumber == activeLine and self.IsFocused) then
                         fb.ImageColor3 = Color3.new(1, 1, 1)
                     else
                         fb.ImageColor3 = lineNumColor
@@ -3464,22 +3349,18 @@ function LuaUEngine:UpdateBlinker(autoScroll)
                 end
             end
 
-            -- Highlights: brackets, find matches, selection
-            if matchIdx1 and matchIdx1 >= lineData.startIdx
-               and matchIdx1 <= (lineData.renderEndIdx or lineData.endIdx) then
+            if matchIdx1 and matchIdx1 >= lineData.startIdx and matchIdx1 <= (lineData.renderEndIdx or lineData.endIdx) then
                 highlightLine(matchIdx1 - 1, matchIdx1, bracketColor, 0.4, lineData)
             end
-            if matchIdx2 and matchIdx2 >= lineData.startIdx
-               and matchIdx2 <= (lineData.renderEndIdx or lineData.endIdx) then
+            if matchIdx2 and matchIdx2 >= lineData.startIdx and matchIdx2 <= (lineData.renderEndIdx or lineData.endIdx) then
                 highlightLine(matchIdx2 - 1, matchIdx2, bracketColor, 0.4, lineData)
             end
 
             local findMatches = self.FindMatches
             if findMatches and #findMatches > 0 then
                 local findColor = Color3.fromRGB(151, 108, 0)
-                if type(self.SyntaxRules) == "table"
-                   and self.SyntaxRules.FindSelectionBackgroundColor
-                   and self.SyntaxRules.FindSelectionBackgroundColor.color then
+                if type(self.SyntaxRules) == "table" and self.SyntaxRules.FindSelectionBackgroundColor
+                    and self.SyntaxRules.FindSelectionBackgroundColor.color then
                     findColor = self.SyntaxRules.FindSelectionBackgroundColor.color
                 end
                 for j = 1, #findMatches do
@@ -3500,7 +3381,6 @@ function LuaUEngine:UpdateBlinker(autoScroll)
         end
     end
 
-    -- Hide unused pooled items
     for i = visLines + 1, #self.LinesPool do self.LinesPool[i].Visible = false end
     for i = visHighlights + 1, #self.HighlightPool do self.HighlightPool[i].Visible = false end
     for i = visFolds + 1, #self.FoldButtonsPool do self.FoldButtonsPool[i].Visible = false end
@@ -3511,7 +3391,6 @@ function LuaUEngine:UpdateBlinker(autoScroll)
         for i = 1, #self.LineNumbersPool do self.LineNumbersPool[i].Visible = false end
     end
 
-    -- Minimap
     if hasMinimap then
         local ratio = CONST.MINIMAP_DIV / ts
         local H_main = self.DocumentHeight
@@ -3606,7 +3485,6 @@ function LuaUEngine:UpdateBlinker(autoScroll)
         end
     end
 
-    -- Caret
     local targetPos = UDim2.new(0, 4 + curX, 0, 4 + curY)
     local targetSize = UDim2.new(0, 1, 0, curH)
     if self.CanvasGroup:GetAttribute("SmoothBlinker") then
@@ -3621,7 +3499,6 @@ function LuaUEngine:UpdateBlinker(autoScroll)
         self.Blinker.Visible = self.SelectionStart == self.CursorIndex
     end
 
-    -- Autocomplete popup & ghost
     if self.AutocompleteVisible and #self.AutocompleteMatches > 0 then
         local absX = (4 + curX) - soX
         local absY = (4 + curY + curH) - soY + 4
@@ -3644,9 +3521,9 @@ function LuaUEngine:UpdateBlinker(autoScroll)
             local curWord = Utils.getWordBeforeCursor(dispText, self.CursorIndex)
             local after = dispText:sub(self.CursorIndex + 1, self.CursorIndex + 1)
             if curWord ~= ""
-               and m.word:lower():sub(1, #curWord) == curWord:lower()
-               and #m.word > #curWord
-               and (after == "" or after:match("[%s%p]")) then
+                and m.word:lower():sub(1, #curWord) == curWord:lower()
+                and #m.word > #curWord
+                and (after == "" or after:match("[%s%p]")) then
                 self.GhostTextLabel.Text = m.word:sub(#curWord + 1)
                 self.GhostTextLabel.Position = UDim2.new(0, 4 + curX, 0, 4 + curY)
                 self.GhostTextLabel.Visible = true
@@ -3661,8 +3538,6 @@ function LuaUEngine:UpdateBlinker(autoScroll)
         self.GhostTextLabel.Visible = false
     end
 end
-
--- ─── Destruction ─────────────────────────────────────────────────────────────
 
 function LuaUEngine:Destroy()
     if self.Destroyed then return end
@@ -3684,7 +3559,6 @@ function LuaUEngine:Destroy()
     if self.VScrollBar then self.VScrollBar:Destroy(); self.VScrollBar = nil end
     if self.HScrollBar then self.HScrollBar:Destroy(); self.HScrollBar = nil end
 
-    -- Clear every pool so we don't leak instances.
     for _, pool in ipairs({
         self.LinesPool, self.HighlightPool, self.LineNumbersPool,
         self.MinimapLinesPool, self.FoldButtonsPool, self.IndentGuidesPool,
