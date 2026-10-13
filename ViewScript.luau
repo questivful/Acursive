@@ -8,23 +8,19 @@ local currentScript
 
 local function getBytecodeSafe(scriptInstance)
     if not scriptInstance then return nil end
-
     local success, bytecode = pcall(getscriptbytecode, scriptInstance)
     if success and type(bytecode) == "string" and #bytecode > 0 then
         return bytecode
     end
-
     if scriptInstance.GetBytecode then
         success, bytecode = pcall(scriptInstance.GetBytecode, scriptInstance)
         if success and type(bytecode) == "string" and #bytecode > 0 then
             return bytecode
         end
     end
-
     if scriptInstance.Bytecode then
         return scriptInstance.Bytecode
     end
-
     return nil
 end
 
@@ -41,21 +37,17 @@ local function decompileWithAPI(scriptInstance)
     if not scriptInstance then
         return nil, "No script instance provided"
     end
-
     if not scriptInstance:IsA("LuaSourceContainer") then
         return nil, "Script is not a LuaSourceContainer"
     end
-
     local bytecode = getBytecodeSafe(scriptInstance)
     if not bytecode or #bytecode == 0 then
         return nil, "No bytecode found in script"
     end
-
     local reqFn = getRequestFunction()
     if not reqFn then
-        return nil, "No request/http_request function available in this executor"
+        return nil, "No request/http_request function available"
     end
-
     local success, response = pcall(reqFn, {
         Url = "https://api.luacid.dev/decompile?type_annotations=useful&indent=2",
         Method = "POST",
@@ -64,15 +56,12 @@ local function decompileWithAPI(scriptInstance)
         },
         Body = bytecode
     })
-
     if not success or not response then
         return nil, "Request failed: " .. tostring(response)
     end
-
     if typeof(response) == "string" then
         return response, nil
     end
-
     if typeof(response) == "table" then
         local status = response.StatusCode or response.Status or 0
         local body = response.Body or response.body
@@ -81,15 +70,14 @@ local function decompileWithAPI(scriptInstance)
         end
         return nil, "API returned status " .. tostring(status) .. ": " .. tostring(body or "")
     end
-
     return nil, "Unexpected response format"
 end
 
 function ScriptViewer.Init()
-    window = sspdo.new("Script Viewer", 650, 450)
+    window = sspdo.New("Script Viewer", 650, 450)
     ScriptViewer.Window = window
 
-    local contentPane = window.GuiElems.Content
+    local contentPane = window.ContentPane or window.GuiElems.Content
 
     local actionBar = Instance.new("Frame")
     actionBar.Name = "ActionBar"
@@ -120,8 +108,8 @@ function ScriptViewer.Init()
         return btn
     end
 
-    local btnCopy = createButton("CopyBtn", "Copy to Clipboard", 1)
-    local btnSave = createButton("SaveBtn", "Save to File", 2)
+    local btnCopy = createButton("CopyBtn", "Copy", 1)
+    local btnSave = createButton("SaveBtn", "Save", 2)
     local btnExec = createButton("ExecuteBtn", "Execute", 3)
     local btnClear = createButton("ClearBtn", "Clear", 4)
     local btnDecompile = createButton("DecompileBtn", "Decompile", 5)
@@ -173,16 +161,13 @@ function ScriptViewer.Init()
             editor.Text = "No script loaded to decompile"
             return
         end
-
         editor.Text = "Decompiling via luacid.dev...\nPlease wait..."
-
         task.spawn(function()
             local success, result = decompileWithAPI(currentScript)
             if success then
                 editor.Text = "-- Decompiled via luacid.dev\n" .. result
             else
                 editor.Text = "Decompilation failed: " .. (result or "Unknown error") .. "\n\nTrying local decompile as fallback...\n"
-
                 if decompile and typeof(currentScript) == "Instance" and currentScript:IsA("LuaSourceContainer") then
                     local ok, localResult = pcall(decompile, currentScript)
                     if ok and localResult and #localResult > 0 then
@@ -200,23 +185,19 @@ function ScriptViewer.ViewScript(scriptInstance, customSource)
     if not window then
         ScriptViewer.Init()
     end
-
     currentScript = scriptInstance
     local name = scriptInstance and scriptInstance.Name or "Script"
     window:SetTitle("Script Viewer - " .. name)
-
     if customSource then
         editor.Text = customSource
     else
         editor.Text = "Loading script...\nAttempting decompile via luacid.dev..."
-
         task.spawn(function()
             local success, result = decompileWithAPI(scriptInstance)
             if success and result then
                 editor.Text = "-- Decompiled via luacid.dev\n" .. result
             else
                 local fallbackMsg = "API decompile failed: " .. (result or "Unknown error") .. "\n\n"
-
                 if decompile and typeof(scriptInstance) == "Instance" and scriptInstance:IsA("LuaSourceContainer") then
                     local ok, localResult = pcall(decompile, scriptInstance)
                     if ok and localResult and #localResult > 0 then
@@ -230,8 +211,6 @@ function ScriptViewer.ViewScript(scriptInstance, customSource)
             end
         end)
     end
-
-    window:Show()
 end
 
 function ScriptViewer.ViewAnimateScript()
@@ -240,12 +219,10 @@ function ScriptViewer.ViewAnimateScript()
         warn("No local player found")
         return
     end
-
     local character = player.Character
     if not character then
         character = player.CharacterAdded:Wait()
     end
-
     local animateScript = character:FindFirstChild("Animate")
     if not animateScript then
         animateScript = game:GetService("StarterCharacterScripts"):FindFirstChild("Animate")
@@ -254,7 +231,6 @@ function ScriptViewer.ViewAnimateScript()
             return
         end
     end
-
     ScriptViewer.ViewScript(animateScript)
 end
 
