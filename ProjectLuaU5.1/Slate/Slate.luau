@@ -9,18 +9,13 @@ local Camera = workspace.CurrentCamera
 local Slate = {}
 
 local registry = getgenv()._SlateRegistry
-if not registry then
-	registry = {
-		groups = {},
-		gui = nil,
-		previewLayer = nil,
-		previews = {},
-		activePreview = nil,
-		previewSlices = {},
-		activeDocks = {},
-	}
-	getgenv()._SlateRegistry = registry
-end
+if type(registry) ~= "table" then registry = {} end
+registry.groups = type(registry.groups) == "table" and registry.groups or {}
+registry.previews = type(registry.previews) == "table" and registry.previews or {}
+registry.previewSlices = type(registry.previewSlices) == "table" and registry.previewSlices or {}
+registry.activeDocks = type(registry.activeDocks) == "table" and registry.activeDocks or {}
+if type(registry.zCounter) ~= "number" then registry.zCounter = 10 end
+getgenv()._SlateRegistry = registry
 
 local ICONS = {
 	Close = "rbxassetid://83769040357829",
@@ -36,7 +31,6 @@ local COLORS = {
 	Shadow = Color3.fromRGB(0, 0, 0),
 	Text = Color3.fromRGB(230, 230, 235),
 	Muted = Color3.fromRGB(150, 150, 158),
-	Hover = Color3.fromRGB(46, 46, 50),
 	Resize = Color3.fromRGB(70, 70, 76),
 	Preview = Color3.fromRGB(110, 110, 118),
 	PreviewSlice = Color3.fromRGB(80, 80, 88),
@@ -54,6 +48,15 @@ local PREVIEW_THICK = 160
 local DOCKED_THICK = 320
 local DOCKED_TOP_THICK = 220
 local BEVEL_SIZE = 6
+local BASE_DOCK_Z = 3
+local PREVIEW_Z = 500
+
+local function bringToFront(dock)
+	registry.zCounter = registry.zCounter + 1
+	if dock.frame then
+		dock.frame.ZIndex = registry.zCounter
+	end
+end
 
 local function ensureGui()
 	if registry.gui and registry.gui.Parent then return registry.gui end
@@ -84,9 +87,10 @@ local function ensurePreviewLayer()
 	layer.Name = "PreviewLayer"
 	layer.Size = UDim2.new(1, 0, 1, 0)
 	layer.BackgroundTransparency = 1
-	layer.ZIndex = 1
+	layer.ZIndex = PREVIEW_Z
 	layer.Parent = gui
 	registry.previewLayer = layer
+	registry.previews = {}
 
 	local function makePreview(name, edge)
 		local p = Instance.new("Frame")
@@ -95,7 +99,7 @@ local function ensurePreviewLayer()
 		p.BorderSizePixel = 0
 		p.BackgroundTransparency = 1
 		p.Visible = false
-		p.ZIndex = 1
+		p.ZIndex = PREVIEW_Z + 1
 		p.Parent = layer
 
 		if edge == "Left" then
@@ -149,7 +153,7 @@ end
 local function countDocksOnEdge(edge)
 	local n = 0
 	for _, d in ipairs(registry.activeDocks) do
-		if d.currentDockSide == edge then n = n + 1 end
+		if d and d.currentDockSide == edge then n = n + 1 end
 	end
 	return n
 end
@@ -165,7 +169,7 @@ local function buildSlices(edge, count)
 		slice.BackgroundColor3 = COLORS.PreviewSlice
 		slice.BackgroundTransparency = 0.6
 		slice.BorderSizePixel = 0
-		slice.ZIndex = 2
+		slice.ZIndex = PREVIEW_Z + 2
 		slice.Parent = p
 		if isVertical then
 			slice.Size = UDim2.new(1, 0, 1 / total, -2)
@@ -266,21 +270,27 @@ end
 function Slate.clearGroup(name)
 	local g = registry.groups[name]
 	if not g then return end
-	for _, fn in ipairs(g.cleanups) do
-		pcall(fn)
+	if type(g.cleanups) == "table" then
+		for _, fn in ipairs(g.cleanups) do
+			pcall(fn)
+		end
 	end
-	for _, d in ipairs(g.docks) do
-		pcall(function() d:destroy() end)
+	if type(g.docks) == "table" then
+		for _, d in ipairs(g.docks) do
+			pcall(function() d:destroy() end)
+		end
 	end
 	g.docks = {}
 	g.cleanups = {}
-	g.version = g.version + 1
+	g.version = (g.version or 0) + 1
 end
 
 function Slate.listGroups()
 	local out = {}
-	for n in pairs(registry.groups) do
-		table.insert(out, n)
+	if type(registry.groups) == "table" then
+		for n in pairs(registry.groups) do
+			table.insert(out, n)
+		end
 	end
 	return out
 end
@@ -296,6 +306,17 @@ local function clamp(n, a, b)
 	return n
 end
 
+local function evaluateZone(mouseLoc)
+	local vp = Camera.ViewportSize
+	local x = mouseLoc.X
+	local y = mouseLoc.Y
+	if x <= DOCK_THRESHOLD then return "Left" end
+	if x >= vp.X - DOCK_THRESHOLD then return "Right" end
+	if y <= DOCK_THRESHOLD + 36 then return "Top" end
+	if y >= vp.Y - DOCK_THRESHOLD then return "Bottom" end
+	return nil
+end
+
 local Dock = {}
 Dock.__index = Dock
 
@@ -307,7 +328,7 @@ function Dock:destroy()
 		btn.Active = false
 		btn.AutoButtonColor = false
 	end
-	self.topBar.Active = false
+	if self.topBar then self.topBar.Active = false end
 
 	if not self.collapsed then
 		self:setCollapsed(true)
@@ -328,13 +349,15 @@ function Dock:destroy()
 	TweenService:Create(self.title, TweenInfo.new(fadeTime), { TextTransparency = 1 }):Play()
 	TweenService:Create(self.contentPlaceholder, TweenInfo.new(fadeTime), { TextTransparency = 1 }):Play()
 
-	for _, b in pairs(self.bevels) do
-		local rim = b:FindFirstChild("Rim")
-		local edgeFrame = b:FindFirstChild("Edge")
-		local fade = b:FindFirstChild("Fade")
-		if rim then TweenService:Create(rim, TweenInfo.new(fadeTime), { BackgroundTransparency = 1 }):Play() end
-		if edgeFrame then TweenService:Create(edgeFrame, TweenInfo.new(fadeTime), { BackgroundTransparency = 1 }):Play() end
-		if fade then TweenService:Create(fade, TweenInfo.new(fadeTime), { BackgroundTransparency = 1 }):Play() end
+	if type(self.bevels) == "table" then
+		for _, b in pairs(self.bevels) do
+			local rim = b:FindFirstChild("Rim")
+			local edgeFrame = b:FindFirstChild("Edge")
+			local fade = b:FindFirstChild("Fade")
+			if rim then TweenService:Create(rim, TweenInfo.new(fadeTime), { BackgroundTransparency = 1 }):Play() end
+			if edgeFrame then TweenService:Create(edgeFrame, TweenInfo.new(fadeTime), { BackgroundTransparency = 1 }):Play() end
+			if fade then TweenService:Create(fade, TweenInfo.new(fadeTime), { BackgroundTransparency = 1 }):Play() end
+		end
 	end
 
 	for _, img in ipairs(self.iconImages) do
@@ -343,14 +366,18 @@ function Dock:destroy()
 		end
 	end
 
-	for _, h in pairs(self.handles) do
-		pcall(function() h.Visible = false end)
+	if type(self.handles) == "table" then
+		for _, h in pairs(self.handles) do
+			pcall(function() h.Visible = false end)
+		end
 	end
 
 	task.wait(fadeTime + 0.05)
 
-	for _, c in ipairs(self.connections) do
-		pcall(function() c:Disconnect() end)
+	if type(self.connections) == "table" then
+		for _, c in ipairs(self.connections) do
+			pcall(function() c:Disconnect() end)
+		end
 	end
 	self.connections = {}
 
@@ -386,6 +413,7 @@ function Dock:setCollapsed(state)
 end
 
 function Dock:updateHandleVisibility()
+	if type(self.handles) ~= "table" then return end
 	local hideMap = {}
 	if self.currentDockSide == "Left" then
 		hideMap = { W = true, NW = true, SW = true }
@@ -397,11 +425,13 @@ function Dock:updateHandleVisibility()
 		hideMap = { S = true, SW = true, SE = true }
 	end
 	for _, name in ipairs({ "N", "S", "E", "W", "NW", "NE", "SW", "SE" }) do
-		self.handles[name].Visible = not hideMap[name]
+		local h = self.handles[name]
+		if h then h.Visible = not hideMap[name] end
 	end
 end
 
 function Dock:updateBevels(side)
+	if type(self.bevels) ~= "table" then return end
 	local targetEdge = nil
 	if side == "Left" then targetEdge = "Right"
 	elseif side == "Right" then targetEdge = "Left"
@@ -448,8 +478,8 @@ function Slate.new(opts)
 	local position = opts.position or UDim2.fromOffset(200, 200)
 
 	local group = Slate.group(groupName)
-
 	local gui = ensureGui()
+	ensurePreviewLayer()
 
 	local self = setmetatable({}, Dock)
 	self.group = group
@@ -477,7 +507,7 @@ function Slate.new(opts)
 	frame.BorderSizePixel = 0
 	frame.BackgroundTransparency = 1
 	frame.ClipsDescendants = true
-	frame.ZIndex = 3
+	frame.ZIndex = BASE_DOCK_Z
 	frame.Parent = gui
 	self.frame = frame
 
@@ -725,9 +755,18 @@ function Slate.new(opts)
 		frame.Position = UDim2.fromOffset(vp.X - DOCKED_THICK, 0)
 		frame.Size = UDim2.fromOffset(DOCKED_THICK, vp.Y)
 		self.expandedHeight = vp.Y
+		if self.registeredEntry then
+			for i, e in ipairs(registry.activeDocks) do
+				if e == self then
+					table.remove(registry.activeDocks, i)
+					break
+				end
+			end
+		end
 		self.currentDockSide = "Right"
 		table.insert(registry.activeDocks, self)
 		self.registeredEntry = true
+		bringToFront(self)
 		self:updateBevels("Right")
 		self:updateHandleVisibility()
 	end))
@@ -852,6 +891,8 @@ function Slate.new(opts)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 		if self.closing then return end
 
+		bringToFront(self)
+
 		if self.currentDockSide then
 			for i, e in ipairs(registry.activeDocks) do
 				if e == self then
@@ -887,12 +928,7 @@ function Slate.new(opts)
 		frame.Position = UDim2.fromOffset(dragStartAbs.X + dx, dragStartAbs.Y + dy)
 
 		local mouseLoc = UserInputService:GetMouseLocation()
-		local vp = Camera.ViewportSize
-		local zone = nil
-		if mouseLoc.X <= DOCK_THRESHOLD then zone = "Left"
-		elseif mouseLoc.X >= vp.X - DOCK_THRESHOLD then zone = "Right"
-		elseif mouseLoc.Y <= DOCK_THRESHOLD then zone = "Top"
-		elseif mouseLoc.Y >= vp.Y - DOCK_THRESHOLD then zone = "Bottom" end
+		local zone = evaluateZone(mouseLoc)
 
 		if zone then
 			showPreview(zone)
@@ -908,11 +944,7 @@ function Slate.new(opts)
 
 		local mouseLoc = UserInputService:GetMouseLocation()
 		local vp = Camera.ViewportSize
-		local zone = nil
-		if mouseLoc.X <= DOCK_THRESHOLD then zone = "Left"
-		elseif mouseLoc.X >= vp.X - DOCK_THRESHOLD then zone = "Right"
-		elseif mouseLoc.Y <= DOCK_THRESHOLD then zone = "Top"
-		elseif mouseLoc.Y >= vp.Y - DOCK_THRESHOLD then zone = "Bottom" end
+		local zone = evaluateZone(mouseLoc)
 
 		hidePreview()
 
@@ -948,8 +980,10 @@ function Slate.new(opts)
 				self.expandedHeight = DOCKED_TOP_THICK
 			end
 
-			table.insert(registry.activeDocks, self)
-			self.registeredEntry = true
+			if not self.registeredEntry then
+				table.insert(registry.activeDocks, self)
+				self.registeredEntry = true
+			end
 			self:updateBevels(zone)
 			self:updateHandleVisibility()
 		end
