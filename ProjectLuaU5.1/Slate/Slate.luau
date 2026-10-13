@@ -150,12 +150,85 @@ local function clearSlices()
 	registry.previewSlices = {}
 end
 
-local function countDocksOnEdge(edge)
-	local n = 0
+local function getDocksOnEdge(edge)
+	local list = {}
 	for _, d in ipairs(registry.activeDocks) do
-		if d and d.currentDockSide == edge then n = n + 1 end
+		if d and d.currentDockSide == edge then
+			table.insert(list, d)
+		end
 	end
-	return n
+	return list
+end
+
+local function countDocksOnEdge(edge)
+	return #getDocksOnEdge(edge)
+end
+
+local function reflowEdge(edge)
+	local docks = getDocksOnEdge(edge)
+	if #docks == 0 then return end
+	table.sort(docks, function(a, b)
+		return (a.sortKey or 0) < (b.sortKey or 0)
+	end)
+	local vp = Camera.ViewportSize
+	local count = #docks
+	local T = TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+
+	if edge == "Left" then
+		local eachH = vp.Y / count
+		for i, d in ipairs(docks) do
+			TweenService:Create(d.frame, T, {
+				Position = UDim2.fromOffset(0, (i - 1) * eachH),
+				Size = UDim2.fromOffset(DOCKED_THICK, eachH),
+			}):Play()
+			d.expandedHeight = eachH
+		end
+	elseif edge == "Right" then
+		local eachH = vp.Y / count
+		for i, d in ipairs(docks) do
+			TweenService:Create(d.frame, T, {
+				Position = UDim2.fromOffset(vp.X - DOCKED_THICK, (i - 1) * eachH),
+				Size = UDim2.fromOffset(DOCKED_THICK, eachH),
+			}):Play()
+			d.expandedHeight = eachH
+		end
+	elseif edge == "Top" then
+		local eachW = vp.X / count
+		for i, d in ipairs(docks) do
+			TweenService:Create(d.frame, T, {
+				Position = UDim2.fromOffset((i - 1) * eachW, 0),
+				Size = UDim2.fromOffset(eachW, DOCKED_TOP_THICK),
+			}):Play()
+			d.expandedHeight = DOCKED_TOP_THICK
+		end
+	elseif edge == "Bottom" then
+		local eachW = vp.X / count
+		for i, d in ipairs(docks) do
+			TweenService:Create(d.frame, T, {
+				Position = UDim2.fromOffset((i - 1) * eachW, vp.Y - DOCKED_TOP_THICK),
+				Size = UDim2.fromOffset(eachW, DOCKED_TOP_THICK),
+			}):Play()
+			d.expandedHeight = DOCKED_TOP_THICK
+		end
+	end
+end
+
+local function findSlotIndexForMouse(edge, mouseLoc)
+	local docks = getDocksOnEdge(edge)
+	table.sort(docks, function(a, b)
+		return (a.sortKey or 0) < (b.sortKey or 0)
+	end)
+	local vp = Camera.ViewportSize
+	local total = #docks + 1
+	if edge == "Left" or edge == "Right" then
+		local eachH = vp.Y / total
+		local idx = math.floor(mouseLoc.Y / eachH) + 1
+		return math.clamp(idx, 1, total)
+	else
+		local eachW = vp.X / total
+		local idx = math.floor(mouseLoc.X / eachW) + 1
+		return math.clamp(idx, 1, total)
+	end
 end
 
 local function buildSlices(edge, count)
@@ -381,6 +454,7 @@ function Dock:destroy()
 	end
 	self.connections = {}
 
+	local oldEdge = self.currentDockSide
 	if self.registeredEntry then
 		for i, e in ipairs(registry.activeDocks) do
 			if e == self then
@@ -389,6 +463,11 @@ function Dock:destroy()
 			end
 		end
 		self.registeredEntry = nil
+	end
+	self.currentDockSide = nil
+
+	if oldEdge then
+		reflowEdge(oldEdge)
 	end
 
 	pcall(function() self.frame:Destroy() end)
@@ -470,6 +549,80 @@ function Dock:updateBevels(side)
 	end
 end
 
+function Dock:dockTo(zone, mouseLoc)
+	local wasDocked = self.currentDockSide
+	if wasDocked then
+		for i, e in ipairs(registry.activeDocks) do
+			if e == self then
+				table.remove(registry.activeDocks, i)
+				break
+			end
+		end
+		self.registeredEntry = nil
+	end
+
+	local sorted = getDocksOnEdge(zone)
+	table.sort(sorted, function(a, b)
+		return (a.sortKey or 0) < (b.sortKey or 0)
+	end)
+
+	local vp = Camera.ViewportSize
+	local total = #sorted + 1
+	local each = (zone == "Left" or zone == "Right") and (vp.Y / total) or (vp.X / total)
+	local axisMouse = (zone == "Left" or zone == "Right") and mouseLoc.Y or mouseLoc.X
+
+	local insertIndex = math.clamp(math.floor(axisMouse / each) + 1, 1, total)
+
+	local sortedAxis = {}
+	for _, d in ipairs(sorted) do
+		table.insert(sortedAxis, d.sortKey or 0)
+	end
+	table.insert(sortedAxis, insertIndex, axisMouse)
+
+	for i, d in ipairs(sorted) do
+		d.sortKey = sortedAxis[i + (i >= insertIndex and 1 or 0)] or d.sortKey
+	end
+
+	self.sortKey = axisMouse
+	self.currentDockSide = zone
+	table.insert(registry.activeDocks, self)
+	self.registeredEntry = true
+
+	bringToFront(self)
+	self:updateBevels(zone)
+	self:updateHandleVisibility()
+
+	if wasDocked and wasDocked ~= zone then
+		reflowEdge(wasDocked)
+	end
+	reflowEdge(zone)
+end
+
+function Dock:undock()
+	local oldEdge = self.currentDockSide
+	if not oldEdge then return end
+	for i, e in ipairs(registry.activeDocks) do
+		if e == self then
+			table.remove(registry.activeDocks, i)
+			break
+		end
+	end
+	self.registeredEntry = nil
+	self.currentDockSide = nil
+	self:updateBevels(nil)
+	self:updateHandleVisibility()
+
+	local targetSize = self.preDockSize or UDim2.fromOffset(DEFAULT_W, DEFAULT_H)
+	local tw = targetSize.X.Offset
+	local th = targetSize.Y.Offset
+	TweenService:Create(self.frame, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+		Size = UDim2.fromOffset(tw, th),
+	}):Play()
+	self.expandedHeight = th
+
+	reflowEdge(oldEdge)
+end
+
 function Slate.new(opts)
 	opts = opts or {}
 	local groupName = opts.group or "default"
@@ -493,6 +646,7 @@ function Slate.new(opts)
 	self.currentDockSide = nil
 	self.preDockSize = nil
 	self.registeredEntry = nil
+	self.sortKey = 0
 
 	local function track(c)
 		table.insert(self.connections, c)
@@ -752,23 +906,8 @@ function Slate.new(opts)
 			self.preDockSize = UDim2.fromOffset(frame.Size.X.Offset, frame.Size.Y.Offset)
 		end
 		local vp = Camera.ViewportSize
-		frame.Position = UDim2.fromOffset(vp.X - DOCKED_THICK, 0)
-		frame.Size = UDim2.fromOffset(DOCKED_THICK, vp.Y)
-		self.expandedHeight = vp.Y
-		if self.registeredEntry then
-			for i, e in ipairs(registry.activeDocks) do
-				if e == self then
-					table.remove(registry.activeDocks, i)
-					break
-				end
-			end
-		end
-		self.currentDockSide = "Right"
-		table.insert(registry.activeDocks, self)
-		self.registeredEntry = true
-		bringToFront(self)
-		self:updateBevels("Right")
-		self:updateHandleVisibility()
+		local mouseLoc = Vector2.new(vp.X - DOCKED_THICK / 2, (frame.AbsolutePosition.Y + frame.AbsoluteSize.Y / 2))
+		self:dockTo("Right", mouseLoc)
 	end))
 
 	local handles = self.handles
@@ -894,24 +1033,7 @@ function Slate.new(opts)
 		bringToFront(self)
 
 		if self.currentDockSide then
-			for i, e in ipairs(registry.activeDocks) do
-				if e == self then
-					table.remove(registry.activeDocks, i)
-					break
-				end
-			end
-			self.registeredEntry = nil
-			self.currentDockSide = nil
-			self:updateBevels(nil)
-			self:updateHandleVisibility()
-
-			local targetSize = self.preDockSize or UDim2.fromOffset(DEFAULT_W, DEFAULT_H)
-			local tw = targetSize.X.Offset
-			local th = targetSize.Y.Offset
-			TweenService:Create(frame, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-				Size = UDim2.fromOffset(tw, th),
-			}):Play()
-			self.expandedHeight = th
+			self:undock()
 			task.wait(0.02)
 		end
 
@@ -943,7 +1065,6 @@ function Slate.new(opts)
 		dragging = false
 
 		local mouseLoc = UserInputService:GetMouseLocation()
-		local vp = Camera.ViewportSize
 		local zone = evaluateZone(mouseLoc)
 
 		hidePreview()
@@ -952,40 +1073,7 @@ function Slate.new(opts)
 			if not self.currentDockSide then
 				self.preDockSize = UDim2.fromOffset(frame.Size.X.Offset, frame.Size.Y.Offset)
 			end
-			self.currentDockSide = zone
-
-			if zone == "Left" then
-				TweenService:Create(frame, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-					Position = UDim2.fromOffset(0, 0),
-					Size = UDim2.fromOffset(DOCKED_THICK, vp.Y),
-				}):Play()
-				self.expandedHeight = vp.Y
-			elseif zone == "Right" then
-				TweenService:Create(frame, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-					Position = UDim2.fromOffset(vp.X - DOCKED_THICK, 0),
-					Size = UDim2.fromOffset(DOCKED_THICK, vp.Y),
-				}):Play()
-				self.expandedHeight = vp.Y
-			elseif zone == "Top" then
-				TweenService:Create(frame, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-					Position = UDim2.fromOffset(0, 0),
-					Size = UDim2.fromOffset(vp.X, DOCKED_TOP_THICK),
-				}):Play()
-				self.expandedHeight = DOCKED_TOP_THICK
-			elseif zone == "Bottom" then
-				TweenService:Create(frame, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-					Position = UDim2.fromOffset(0, vp.Y - DOCKED_TOP_THICK),
-					Size = UDim2.fromOffset(vp.X, DOCKED_TOP_THICK),
-				}):Play()
-				self.expandedHeight = DOCKED_TOP_THICK
-			end
-
-			if not self.registeredEntry then
-				table.insert(registry.activeDocks, self)
-				self.registeredEntry = true
-			end
-			self:updateBevels(zone)
-			self:updateHandleVisibility()
+			self:dockTo(zone, mouseLoc)
 		end
 	end))
 
