@@ -74,10 +74,19 @@ local function decompileWithAPI(scriptInstance)
 end
 
 function ScriptViewer.Init()
-    window = sspdo.New("Script Viewer", 650, 450)
+    -- Handle both New and new constructors
+    local constructor = sspdo.New or sspdo.new
+    if not constructor then
+        error("DockManager does not expose a 'New' or 'new' constructor. Check the module version.")
+    end
+    window = constructor("Script Viewer", 650, 450)
     ScriptViewer.Window = window
 
-    local contentPane = window.ContentPane or window.GuiElems.Content
+    -- Support both ContentPane and GuiElems.Content access patterns
+    local contentPane = window.ContentPane or (window.GuiElems and window.GuiElems.Content)
+    if not contentPane then
+        error("Could not find content pane in the dock window.")
+    end
 
     local actionBar = Instance.new("Frame")
     actionBar.Name = "ActionBar"
