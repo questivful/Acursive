@@ -375,9 +375,9 @@ local function makeDraggable(win, handles)
 end
 
 local function styleNav(tab, active)
-    tween(tab.Button, ti(0.25), { BackgroundTransparency = active and 0.90 or 1 })
-    tween(tab.IconImg, ti(0.25), { ImageColor3 = active and Alion.Accent or Color3.fromRGB(205, 205, 205) })
-    tween(tab.NameLabel, ti(0.25), { TextColor3 = active and T.Text or Color3.fromRGB(205, 205, 205) })
+    tween(tab.NavBtn, ti(0.25), { BackgroundTransparency = active and 0.90 or 1 })
+    tween(tab.NavIcon, ti(0.25), { ImageColor3 = active and Alion.Accent or Color3.fromRGB(205, 205, 205) })
+    tween(tab.NavName, ti(0.25), { TextColor3 = active and T.Text or Color3.fromRGB(205, 205, 205) })
 end
 
 function Alion:CreateWindow(opts)
@@ -633,35 +633,35 @@ function Window:Destroy()
     task.delay(0.45, function() pcall(function() self.Root:Destroy() end) end)
 end
 
-function Window:SelectTab(tab)
-    if type(tab) == "number" then tab = self.Tabs[tab] end
-    if not tab or self.Active == tab then return end
+function Window:SelectTab(target)
+    if type(target) == "number" then target = self.Tabs[target] end
+    if not target or self.Active == target then return end
     local prev = self.Active
-    self.Active = tab
+    self.Active = target
     if prev then
         styleNav(prev, false)
-        tween(prev.Page, ti(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In), { GroupTransparency = 1 })
+        tween(prev.TabPage, ti(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In), { GroupTransparency = 1 })
         task.delay(0.2, function()
-            if self.Active ~= prev then prev.Page.Visible = false end
+            if self.Active ~= prev then prev.TabPage.Visible = false end
         end)
     end
-    styleNav(tab, true)
-    tab.Page.Position = UDim2.fromOffset(0, 18)
-    tab.Page.GroupTransparency = 1
-    tab.Page.Visible = true
-    tab.Scroll.CanvasPosition = Vector2.zero
-    tween(tab.Page, ti(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0.08), {
+    styleNav(target, true)
+    target.TabPage.Position = UDim2.fromOffset(0, 18)
+    target.TabPage.GroupTransparency = 1
+    target.TabPage.Visible = true
+    target.TabScroll.CanvasPosition = Vector2.zero
+    tween(target.TabPage, ti(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0.08), {
         Position = UDim2.fromOffset(0, 0),
         GroupTransparency = 0,
     })
-    local y = (tab.Index - 1) * 42 + 11
+    local y = (target.Index - 1) * 42 + 11
     if not prev then
         self.Indicator.Position = UDim2.fromOffset(0, y)
         self.Indicator.Visible = true
     else
         tween(self.Indicator, ti(0.4), { Position = UDim2.fromOffset(0, y) })
     end
-    self.TitleLabel.Text = tab.Name
+    self.TitleLabel.Text = target.Name
     self.TitleLabel.TextTransparency = 1
     self.TitleLabel.Position = UDim2.fromOffset(38, 0)
     tween(self.TitleLabel, ti(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0.05), {
@@ -684,7 +684,7 @@ function Window:Tab(opts)
         GroupTransparency = 1,
         Parent = self.Nav,
     })
-    local button = new("TextButton", {
+    local navBtn = new("TextButton", {
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 1,
@@ -692,20 +692,20 @@ function Window:Tab(opts)
         AutoButtonColor = false,
         Parent = wrap,
     })
-    corner(button, 6)
-    local iconImg = icon({
+    corner(navBtn, 6)
+    local navIcon = icon({
         AnchorPoint = Vector2.new(0, 0.5),
         Position = UDim2.new(0, 14, 0.5, 0),
         Size = UDim2.fromOffset(20, 20),
-        Parent = button,
+        Parent = navBtn,
     }, iconName, Color3.fromRGB(205, 205, 205))
-    local nameLabel = label({
+    local navName = label({
         Position = UDim2.fromOffset(46, 0),
         Size = UDim2.new(1, -52, 1, 0),
         Text = name,
         TextColor3 = Color3.fromRGB(205, 205, 205),
         TextTruncate = Enum.TextTruncate.AtEnd,
-        Parent = button,
+        Parent = navBtn,
     })
 
     local page = new("CanvasGroup", {
@@ -746,25 +746,24 @@ function Window:Tab(opts)
         Window = self,
         Name = name,
         Index = index,
-        Page = page,
-        Scroll = scroll,
-        Content = scroll,
-        Button = button,
-        IconImg = iconImg,
-        NameLabel = nameLabel,
+        TabPage = page,
+        TabScroll = scroll,
+        NavBtn = navBtn,
+        NavIcon = navIcon,
+        NavName = navName,
         _order = 1,
         _currentSection = nil,
         Elements = {},
     }, Tab)
     table.insert(self.Tabs, tab)
 
-    track(button.MouseEnter:Connect(function()
-        if self.Active ~= tab then tween(button, ti(0.2), { BackgroundTransparency = 0.95 }) end
+    track(navBtn.MouseEnter:Connect(function()
+        if self.Active ~= tab then tween(navBtn, ti(0.2), { BackgroundTransparency = 0.95 }) end
     end))
-    track(button.MouseLeave:Connect(function()
-        if self.Active ~= tab then tween(button, ti(0.2), { BackgroundTransparency = 1 }) end
+    track(navBtn.MouseLeave:Connect(function()
+        if self.Active ~= tab then tween(navBtn, ti(0.2), { BackgroundTransparency = 1 }) end
     end))
-    track(button.Activated:Connect(function() self:SelectTab(tab) end))
+    track(navBtn.Activated:Connect(function() self:SelectTab(tab) end))
 
     task.delay(0.3 + (index - 1) * 0.06, function()
         if wrap.Parent then
@@ -774,22 +773,6 @@ function Window:Tab(opts)
 
     if index == 1 then self:SelectTab(tab) end
     return tab
-end
-
-function Tab:_target()
-    if self._currentSection and self._currentSection.Body then
-        return self._currentSection.Body
-    end
-    return self.Content
-end
-
-function Tab:_nextOrder()
-    if self._currentSection then
-        self._currentSection._order = (self._currentSection._order or 0) + 1
-        return self._currentSection._order
-    end
-    self._order = self._order + 1
-    return self._order
 end
 
 function Tab:Section(opts)
@@ -804,7 +787,7 @@ function Tab:Section(opts)
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         LayoutOrder = order,
-        Parent = self.Scroll,
+        Parent = self.TabScroll,
     })
     new("UIListLayout", {
         Padding = UDim.new(0, 6),
@@ -858,10 +841,25 @@ function Tab:Section(opts)
     return sec
 end
 
+function Tab:_curSection()
+    if not self._currentSection then self:Section({}) end
+    return self._currentSection
+end
+
+function Tab:Toggle(o) return self:_curSection():Toggle(o) end
+function Tab:Dropdown(o) return self:_curSection():Dropdown(o) end
+function Tab:Slider(o) return self:_curSection():Slider(o) end
+function Tab:Keybind(o) return self:_curSection():Keybind(o) end
+function Tab:Button(o) return self:_curSection():Button(o) end
+function Tab:Input(o) return self:_curSection():Input(o) end
+function Tab:ColorPicker(o) return self:_curSection():ColorPicker(o) end
+function Tab:Label(o) return self:_curSection():Label(o) end
+function Tab:Textbox(o) return self:_curSection():Input(o) end
+
 function Section:_row(o, reserve)
     self._order = (self._order or 0) + 1
-    local hasDesc = type(o.Desc) == "string" and o.Desc ~= "" or type(o.Description) == "string" and o.Description ~= ""
     local descText = o.Desc or o.Description or ""
+    local hasDesc = type(descText) == "string" and descText ~= ""
     local h = hasDesc and 58 or 48
     local row = new("Frame", {
         Name = "Row",
@@ -1114,7 +1112,7 @@ function Section:Slider(o)
     else
         min = o.Min or 0
         max = o.Max or 100
-        default = o.Default or min
+        default = o.Default or (type(val) == "number" and val or min)
     end
     local inc = o.Increment or 1
     local suffix = o.Suffix or ""
@@ -1956,92 +1954,6 @@ function Section:ColorPicker(o)
     function obj:Expand() if not expanded then setExpanded(true) end end
     function obj:Collapse() if expanded then setExpanded(false) end end
     return finishElement(obj, row, titleLbl, descLbl)
-end
-
-function Tab:Toggle(o) return self:Section({}).Toggle(self:Section({}), o) end
-
-local function wrapTabShortcuts(tab)
-    local function use(o)
-        if not tab._currentSection then
-            tab:Section({})
-        end
-        return tab._currentSection
-    end
-    tab.Toggle      = function(_, o) return use().Toggle(use(), o) end
-    tab.Dropdown    = function(_, o) return use().Dropdown(use(), o) end
-    tab.Slider      = function(_, o) return use().Slider(use(), o) end
-    tab.Keybind     = function(_, o) return use().Keybind(use(), o) end
-    tab.Button      = function(_, o) return use().Button(use(), o) end
-    tab.Input       = function(_, o) return use().Input(use(), o) end
-    tab.ColorPicker = function(_, o) return use().ColorPicker(use(), o) end
-    tab.Label       = function(_, o) return use().Label(use(), o) end
-end
-
-local originalTab = Window.Tab
-function Window:Tab(opts)
-    local t = originalTab(self, opts)
-    t.Toggle      = function(self2, o) return self2:Section({}).Toggle(self2._currentSection, o) end
-    t.Dropdown    = function(self2, o) return self2._currentSection.Dropdown(self2._currentSection, o) end
-    t.Slider      = function(self2, o) return self2._currentSection.Slider(self2._currentSection, o) end
-    t.Keybind     = function(self2, o) return self2._currentSection.Keybind(self2._currentSection, o) end
-    t.Button      = function(self2, o) return self2._currentSection.Button(self2._currentSection, o) end
-    t.Input       = function(self2, o) return self2._currentSection.Input(self2._currentSection, o) end
-    t.ColorPicker = function(self2, o) return self2._currentSection.ColorPicker(self2._currentSection, o) end
-    t.Label       = function(self2, o) return self2._currentSection.Label(self2._currentSection, o) end
-
-    local origSection = t.Section
-    t.Section = function(self2, opts2)
-        local s = origSection(self2, opts2)
-        return s
-    end
-
-    function t:Toggle2() end
-    return t
-end
-
-function Tab:__call(o) return self:Section(o) end
-
-local mt = getmetatable(Tab)
-Tab.__call = nil
-
-function Tab.Toggle(self, o)
-    if not self._currentSection then self:Section({}) end
-    return self._currentSection.Toggle(self._currentSection, o)
-end
-
-function Tab.Dropdown(self, o)
-    if not self._currentSection then self:Section({}) end
-    return self._currentSection.Dropdown(self._currentSection, o)
-end
-
-function Tab.Slider(self, o)
-    if not self._currentSection then self:Section({}) end
-    return self._currentSection.Slider(self._currentSection, o)
-end
-
-function Tab.Keybind(self, o)
-    if not self._currentSection then self:Section({}) end
-    return self._currentSection.Keybind(self._currentSection, o)
-end
-
-function Tab.Button(self, o)
-    if not self._currentSection then self:Section({}) end
-    return self._currentSection.Button(self._currentSection, o)
-end
-
-function Tab.Input(self, o)
-    if not self._currentSection then self:Section({}) end
-    return self._currentSection.Input(self._currentSection, o)
-end
-
-function Tab.ColorPicker(self, o)
-    if not self._currentSection then self:Section({}) end
-    return self._currentSection.ColorPicker(self._currentSection, o)
-end
-
-function Tab.Label(self, o)
-    if not self._currentSection then self:Section({}) end
-    return self._currentSection.Label(self._currentSection, o)
 end
 
 if getgenv then getgenv().Alion = Alion end
