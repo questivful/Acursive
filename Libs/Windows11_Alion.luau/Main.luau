@@ -1,5 +1,5 @@
 local Alion = {}
-Alion.Version = "2.0.1"
+Alion.Version = "2.0.2"
 Alion.__index = Alion
 
 if getgenv and type(getgenv().Alion) == "table" and getgenv().Alion.Cleanup then
@@ -482,10 +482,9 @@ function Alion:Notify(o)
     end)
 end
 
-local function buildCharacterInto(world, target, mode)
-    if not target then return nil end
-    if type(target) == "userdata" and target:IsA("Model") then
-        local clone = target:Clone()
+local function sanitizeCharacterClone(clone)
+    if not clone then return nil end
+    local ok = pcall(function()
         for _, d in ipairs(clone:GetDescendants()) do
             if d:IsA("BaseScript") then d:Destroy() end
             if d:IsA("BasePart") then
@@ -493,34 +492,82 @@ local function buildCharacterInto(world, target, mode)
                 d.CanCollide = false
             end
         end
-        clone.Parent = world
-        if mode == "Head" then
-            local head = clone:FindFirstChild("Head")
-            if head then
-                for _, d in ipairs(clone:GetDescendants()) do
-                    if d:IsA("BasePart") and d ~= head then
-                        d.Transparency = 1
-                    end
+    end)
+    if not ok then return nil end
+    return clone
+end
+
+local function centerModel(clone, mode)
+    if not clone then return end
+    if mode == "Head" then
+        local head = clone:FindFirstChild("Head")
+        if head and head:IsA("BasePart") then
+            for _, d in ipairs(clone:GetDescendants()) do
+                if d:IsA("BasePart") and d ~= head then
+                    d.Transparency = 1
                 end
-                clone:PivotTo(head.CFrame - head.Position)
             end
-        else
-            local bcf = clone:GetBoundingBox()
-            local pivot = clone:GetPivot()
-            clone:PivotTo(pivot + (Vector3.zero - bcf.Position))
+            pcall(function() clone:PivotTo(head.CFrame - head.Position) end)
         end
-        return clone
-    elseif typeof(target) == "Instance" then
-        return buildCharacterInto(world, target.Character or target, mode)
-    elseif typeof(target) == "number" then
-        local plr = Players:GetPlayerByUserId(target)
-        if plr and plr.Character then return buildCharacterInto(world, plr.Character, mode) end
-        local ok, desc = pcall(function() return Players:GetHumanoidDescriptionFromUserId(target) end)
-        if ok and desc then
-            local ok2, model = pcall(function() return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15) end)
-            if ok2 and model then return buildCharacterInto(world, model, mode) end
+    else
+        local ok, bcf = pcall(function() return clone:GetBoundingBox() end)
+        if ok and bcf then
+            local pivot = clone:GetPivot()
+            pcall(function() clone:PivotTo(pivot + (Vector3.zero - bcf.Position)) end)
         end
     end
+end
+
+local function buildFromModel(world, model, mode)
+    if not model or not model.Parent then return nil end
+    local ok, clone = pcall(function() return model:Clone() end)
+    if not ok or not clone then return nil end
+    clone = sanitizeCharacterClone(clone)
+    if not clone then return nil end
+    clone.Parent = world
+    centerModel(clone, mode)
+    return clone
+end
+
+local function buildFromUserId(world, userId, mode)
+    local rigs = { Enum.HumanoidRigType.R15, Enum.HumanoidRigType.R6 }
+    for _, rig in ipairs(rigs) do
+        local ok, desc = pcall(function() return Players:GetHumanoidDescriptionFromUserId(userId) end)
+        if ok and desc then
+            local ok2, model = pcall(function() return Players:CreateHumanoidModelFromDescription(desc, rig) end)
+            if ok2 and model then
+                local result = buildFromModel(world, model, mode)
+                pcall(function() model:Destroy() end)
+                if result then return result end
+            end
+        end
+    end
+    return nil
+end
+
+local function buildCharacterInto(world, target, mode)
+    if not target then return nil end
+
+    if typeof(target) == "Instance" then
+        if target:IsA("Player") then
+            local char = target.Character
+            if not char then return nil end
+            return buildFromModel(world, char, mode)
+        end
+        if target:IsA("Model") then
+            return buildFromModel(world, target, mode)
+        end
+        return nil
+    end
+
+    if type(target) == "number" then
+        local plr = Players:GetPlayerByUserId(target)
+        if plr and plr.Character then
+            return buildFromModel(world, plr.Character, mode)
+        end
+        return buildFromUserId(world, target, mode)
+    end
+
     return nil
 end
 
@@ -574,9 +621,13 @@ local function makeCharacterViewport(props)
     local model = buildCharacterInto(world, props.Target or LocalPlayer, mode)
     local dist = props.Distance
     if not dist and model then
-        local _, size = model:GetBoundingBox()
-        local maxDim = math.max(size.X, size.Y, size.Z)
-        dist = (maxDim * 0.5) / math.tan(math.rad(fov * 0.5)) * 1.25
+        local ok, _, size = pcall(function() return model:GetBoundingBox() end)
+        if ok and size then
+            local maxDim = math.max(size.X, size.Y, size.Z)
+            if maxDim > 0 then
+                dist = (maxDim * 0.5) / math.tan(math.rad(fov * 0.5)) * 1.25
+            end
+        end
     end
     dist = dist or 12
     local height = props.LookHeight or (mode == "Head" and 0 or 0.2)
@@ -603,12 +654,16 @@ local function makeCharacterViewport(props)
         if vpf.Parent then vpf:Destroy() end
     end
     function api:SetTarget(target)
-        if model then model:Destroy() end
+        if model and model.Parent then model:Destroy() end
         model = buildCharacterInto(world, target, mode)
         if model then
-            local _, size = model:GetBoundingBox()
-            local maxDim = math.max(size.X, size.Y, size.Z)
-            dist = (maxDim * 0.5) / math.tan(math.rad(fov * 0.5)) * 1.25
+            local ok, _, size = pcall(function() return model:GetBoundingBox() end)
+            if ok and size then
+                local maxDim = math.max(size.X, size.Y, size.Z)
+                if maxDim > 0 then
+                    dist = (maxDim * 0.5) / math.tan(math.rad(fov * 0.5)) * 1.25
+                end
+            end
         end
     end
     function api:SetSpeed(v) spinSpeed = v end
@@ -733,237 +788,237 @@ function Alion:CreateWindow(opts)
     end
 
     function win:_layout()
-    if self._destroyed then return end
+        if self._destroyed then return end
 
-    local keepPages = self.Pages
-    for _, c in ipairs(content:GetChildren()) do
-        if c ~= keepPages then c:Destroy() end
-    end
-    self.NavItems = {}
-
-    local pos = self._navPos or "Left"
-    local showProfile = self._showProfile
-    local showFooter = self._showFooter
-
-    local sidebarW, navH = 216, 56
-    local profileFrame
-    local navFrame
-
-    if pos == "Left" then
-        profileFrame = new("Frame", {
-            Name = "Sidebar",
-            Size = UDim2.new(0, sidebarW, 1, 0),
-            BackgroundTransparency = 1,
-            Parent = content,
-        })
-        new("Frame", {
-            Size = UDim2.new(1, 0, 0, 72),
-            BackgroundTransparency = 1,
-            Active = true,
-            Parent = profileFrame,
-        })
-        if showProfile then
-            local avatar = new("ImageLabel", {
-                Size = UDim2.fromOffset(40, 40),
-                Position = UDim2.fromOffset(16, 16),
-                BackgroundColor3 = T.Control,
-                Image = "",
-                Parent = profileFrame,
-            })
-            corner(avatar, 100)
-            local avStroke = stroke(avatar, T.StrokeLight, 1, 0.3)
-            registerTheme(avatar, "BackgroundColor3", "Control")
-            registerTheme(avStroke, "Color", "StrokeLight")
-            task.spawn(function()
-                local ok, img = pcall(function()
-                    return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
-                end)
-                if ok and avatar.Parent then avatar.Image = img end
-            end)
-            local nameLbl = label({
-                Position = UDim2.fromOffset(64, 16), Size = UDim2.new(1, -76, 0, 20),
-                Text = LocalPlayer.DisplayName, Font = Enum.Font.BuilderSansBold, TextSize = 15,
-                TextTruncate = Enum.TextTruncate.AtEnd, Parent = profileFrame,
-            })
-            local subLbl = label({
-                Position = UDim2.fromOffset(64, 36), Size = UDim2.new(1, -76, 0, 18),
-                Text = opts.Title or "Alion", Font = Enum.Font.BuilderSans, TextSize = 12,
-                TextColor3 = T.SubText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = profileFrame,
-            })
-            registerTheme(nameLbl, "TextColor3", "Text")
-            registerTheme(subLbl, "TextColor3", "SubText")
+        local keepPages = self.Pages
+        for _, c in ipairs(content:GetChildren()) do
+            if c ~= keepPages then c:Destroy() end
         end
-        navFrame = new("Frame", {
-            Name = "Nav",
-            Position = UDim2.fromOffset(8, 80),
-            Size = UDim2.new(1, -16, 1, showFooter and -124 or -92),
-            BackgroundTransparency = 1,
-            Parent = profileFrame,
-        })
-        self.Indicator = new("Frame", {
-            Size = UDim2.fromOffset(3, 16),
-            Position = UDim2.fromOffset(0, 11),
-            BackgroundColor3 = Alion.Accent,
-            BorderSizePixel = 0, Visible = false, ZIndex = 5,
-            Parent = navFrame,
-        })
-        corner(self.Indicator, 100)
-        registerAccent(self.Indicator)
-        if showFooter then
-            local fl = label({
-                Position = UDim2.new(0, 16, 1, -34), Size = UDim2.new(1, -32, 0, 18),
-                Text = "Alion v" .. Alion.Version, Font = Enum.Font.BuilderSans, TextSize = 12,
-                TextColor3 = T.Muted, Parent = profileFrame,
-            })
-            registerTheme(fl, "TextColor3", "Muted")
-        end
-    else
-        navFrame = new("Frame", {
-            Name = "TopBar",
-            Position = (pos == "Top") and UDim2.fromOffset(0, 0) or UDim2.new(0, 0, 1, -navH),
-            Size = UDim2.new(1, 0, 0, navH),
-            BackgroundColor3 = T.Nav, BackgroundTransparency = 0.15,
-            Parent = content,
-        })
-        registerTheme(navFrame, "BackgroundColor3", "Nav")
-        local nvStroke = stroke(navFrame, T.Divider, 1, 0.4)
-        registerTheme(nvStroke, "Color", "Divider")
+        self.NavItems = {}
 
-        local navScroll = new("ScrollingFrame", {
-            Position = UDim2.fromOffset(showProfile and 210 or 12, 0),
-            Size = UDim2.new(1, showProfile and -220 or -12, 1, 0),
-            BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
-            CanvasSize = UDim2.new(),
-            AutomaticCanvasSize = Enum.AutomaticSize.X,
-            ScrollingDirection = Enum.ScrollingDirection.X,
-            ElasticBehavior = Enum.ElasticBehavior.Never,
-            Parent = navFrame,
-        })
-        new("UIListLayout", {
-            Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder,
-            FillDirection = Enum.FillDirection.Horizontal,
-            VerticalAlignment = Enum.VerticalAlignment.Center, Parent = navScroll,
-        })
-        navFrame = navScroll
+        local pos = self._navPos or "Left"
+        local showProfile = self._showProfile
+        local showFooter = self._showFooter
 
-        if showProfile then
-            local pFrame = new("Frame", {
-                Size = UDim2.fromOffset(196, navH),
+        local sidebarW, navH = 216, 56
+        local profileFrame
+        local navFrame
+
+        if pos == "Left" then
+            profileFrame = new("Frame", {
+                Name = "Sidebar",
+                Size = UDim2.new(0, sidebarW, 1, 0),
                 BackgroundTransparency = 1,
                 Parent = content,
-                Name = "TopBarProfile",
             })
-            pFrame.Position = (pos == "Top") and UDim2.fromOffset(0, 0) or UDim2.new(0, 0, 1, -navH)
-            local avatar = new("ImageLabel", {
-                Size = UDim2.fromOffset(30, 30),
-                Position = UDim2.fromOffset(14, (navH - 30) / 2),
-                BackgroundColor3 = T.Control, Image = "", Parent = pFrame,
+            new("Frame", {
+                Size = UDim2.new(1, 0, 0, 72),
+                BackgroundTransparency = 1,
+                Active = true,
+                Parent = profileFrame,
             })
-            corner(avatar, 100)
-            registerTheme(avatar, "BackgroundColor3", "Control")
-            task.spawn(function()
-                local ok, img = pcall(function()
-                    return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+            if showProfile then
+                local avatar = new("ImageLabel", {
+                    Size = UDim2.fromOffset(40, 40),
+                    Position = UDim2.fromOffset(16, 16),
+                    BackgroundColor3 = T.Control,
+                    Image = "",
+                    Parent = profileFrame,
+                })
+                corner(avatar, 100)
+                local avStroke = stroke(avatar, T.StrokeLight, 1, 0.3)
+                registerTheme(avatar, "BackgroundColor3", "Control")
+                registerTheme(avStroke, "Color", "StrokeLight")
+                task.spawn(function()
+                    local ok, img = pcall(function()
+                        return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+                    end)
+                    if ok and avatar.Parent then avatar.Image = img end
                 end)
-                if ok and avatar.Parent then avatar.Image = img end
-            end)
-            label({
-                Position = UDim2.fromOffset(52, 0), Size = UDim2.new(1, -60, 1, 0),
-                Text = LocalPlayer.DisplayName, Font = Enum.Font.BuilderSansBold,
-                TextSize = 14, TextTruncate = Enum.TextTruncate.AtEnd, Parent = pFrame,
+                local nameLbl = label({
+                    Position = UDim2.fromOffset(64, 16), Size = UDim2.new(1, -76, 0, 20),
+                    Text = LocalPlayer.DisplayName, Font = Enum.Font.BuilderSansBold, TextSize = 15,
+                    TextTruncate = Enum.TextTruncate.AtEnd, Parent = profileFrame,
+                })
+                local subLbl = label({
+                    Position = UDim2.fromOffset(64, 36), Size = UDim2.new(1, -76, 0, 18),
+                    Text = opts.Title or "Alion", Font = Enum.Font.BuilderSans, TextSize = 12,
+                    TextColor3 = T.SubText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = profileFrame,
+                })
+                registerTheme(nameLbl, "TextColor3", "Text")
+                registerTheme(subLbl, "TextColor3", "SubText")
+            end
+            navFrame = new("Frame", {
+                Name = "Nav",
+                Position = UDim2.fromOffset(8, 80),
+                Size = UDim2.new(1, -16, 1, showFooter and -124 or -92),
+                BackgroundTransparency = 1,
+                Parent = profileFrame,
             })
-            profileFrame = pFrame
+            self.Indicator = new("Frame", {
+                Size = UDim2.fromOffset(3, 16),
+                Position = UDim2.fromOffset(0, 11),
+                BackgroundColor3 = Alion.Accent,
+                BorderSizePixel = 0, Visible = false, ZIndex = 5,
+                Parent = navFrame,
+            })
+            corner(self.Indicator, 100)
+            registerAccent(self.Indicator)
+            if showFooter then
+                local fl = label({
+                    Position = UDim2.new(0, 16, 1, -34), Size = UDim2.new(1, -32, 0, 18),
+                    Text = "Alion v" .. Alion.Version, Font = Enum.Font.BuilderSans, TextSize = 12,
+                    TextColor3 = T.Muted, Parent = profileFrame,
+                })
+                registerTheme(fl, "TextColor3", "Muted")
+            end
+        else
+            navFrame = new("Frame", {
+                Name = "TopBar",
+                Position = (pos == "Top") and UDim2.fromOffset(0, 0) or UDim2.new(0, 0, 1, -navH),
+                Size = UDim2.new(1, 0, 0, navH),
+                BackgroundColor3 = T.Nav, BackgroundTransparency = 0.15,
+                Parent = content,
+            })
+            registerTheme(navFrame, "BackgroundColor3", "Nav")
+            local nvStroke = stroke(navFrame, T.Divider, 1, 0.4)
+            registerTheme(nvStroke, "Color", "Divider")
+
+            local navScroll = new("ScrollingFrame", {
+                Position = UDim2.fromOffset(showProfile and 210 or 12, 0),
+                Size = UDim2.new(1, showProfile and -220 or -12, 1, 0),
+                BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
+                CanvasSize = UDim2.new(),
+                AutomaticCanvasSize = Enum.AutomaticSize.X,
+                ScrollingDirection = Enum.ScrollingDirection.X,
+                ElasticBehavior = Enum.ElasticBehavior.Never,
+                Parent = navFrame,
+            })
+            new("UIListLayout", {
+                Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder,
+                FillDirection = Enum.FillDirection.Horizontal,
+                VerticalAlignment = Enum.VerticalAlignment.Center, Parent = navScroll,
+            })
+            navFrame = navScroll
+
+            if showProfile then
+                local pFrame = new("Frame", {
+                    Size = UDim2.fromOffset(196, navH),
+                    BackgroundTransparency = 1,
+                    Parent = content,
+                    Name = "TopBarProfile",
+                })
+                pFrame.Position = (pos == "Top") and UDim2.fromOffset(0, 0) or UDim2.new(0, 0, 1, -navH)
+                local avatar = new("ImageLabel", {
+                    Size = UDim2.fromOffset(30, 30),
+                    Position = UDim2.fromOffset(14, (navH - 30) / 2),
+                    BackgroundColor3 = T.Control, Image = "", Parent = pFrame,
+                })
+                corner(avatar, 100)
+                registerTheme(avatar, "BackgroundColor3", "Control")
+                task.spawn(function()
+                    local ok, img = pcall(function()
+                        return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+                    end)
+                    if ok and avatar.Parent then avatar.Image = img end
+                end)
+                label({
+                    Position = UDim2.fromOffset(52, 0), Size = UDim2.new(1, -60, 1, 0),
+                    Text = LocalPlayer.DisplayName, Font = Enum.Font.BuilderSansBold,
+                    TextSize = 14, TextTruncate = Enum.TextTruncate.AtEnd, Parent = pFrame,
+                })
+                profileFrame = pFrame
+            end
         end
-    end
 
-    local main = new("Frame", {
-        Name = "Main",
-        Position = UDim2.fromOffset(0, 0),
-        Size = UDim2.fromScale(1, 1),
-        BackgroundTransparency = 1,
-        Parent = content,
-    })
-    if pos == "Left" then
-        main.Position = UDim2.fromOffset(sidebarW, 0)
-        main.Size = UDim2.new(1, -sidebarW, 1, 0)
-    elseif pos == "Top" then
-        main.Position = UDim2.fromOffset(0, navH)
-        main.Size = UDim2.new(1, 0, 1, -navH)
-    elseif pos == "Bottom" then
-        main.Position = UDim2.fromOffset(0, 0)
-        main.Size = UDim2.new(1, 0, 1, -navH)
-    end
-
-    local header = new("Frame", {
-        Name = "Header",
-        Size = UDim2.new(1, 0, 0, 56),
-        BackgroundTransparency = 1,
-        Active = true,
-        Parent = main,
-    })
-    local titleLabel = label({
-        Position = UDim2.fromOffset(24, 0),
-        Size = UDim2.new(1, -130, 1, 0),
-        Text = (self.Active and self.Active.Name) or "",
-        Font = Enum.Font.BuilderSansBold, TextSize = 22,
-        Parent = header,
-    })
-    registerTheme(titleLabel, "TextColor3", "Text")
-
-    if not keepPages then
-        keepPages = new("Frame", {
-            Name = "Pages",
+        local main = new("Frame", {
+            Name = "Main",
+            Position = UDim2.fromOffset(0, 0),
+            Size = UDim2.fromScale(1, 1),
             BackgroundTransparency = 1,
+            Parent = content,
+        })
+        if pos == "Left" then
+            main.Position = UDim2.fromOffset(sidebarW, 0)
+            main.Size = UDim2.new(1, -sidebarW, 1, 0)
+        elseif pos == "Top" then
+            main.Position = UDim2.fromOffset(0, navH)
+            main.Size = UDim2.new(1, 0, 1, -navH)
+        elseif pos == "Bottom" then
+            main.Position = UDim2.fromOffset(0, 0)
+            main.Size = UDim2.new(1, 0, 1, -navH)
+        end
+
+        local header = new("Frame", {
+            Name = "Header",
+            Size = UDim2.new(1, 0, 0, 56),
+            BackgroundTransparency = 1,
+            Active = true,
             Parent = main,
         })
-        self.Pages = keepPages
-    else
-        keepPages.Parent = main
-    end
-    keepPages.Position = UDim2.fromOffset(0, 56)
-    keepPages.Size = UDim2.new(1, 0, 1, -56)
-
-    self.Nav = navFrame
-    self.Header = header
-    self.TitleLabel = titleLabel
-    self.Main = main
-    self.ProfileFrame = profileFrame
-
-    local function ctrlButton(iconName, xOff, hoverColor, hoverTransparency)
-        local b = new("TextButton", {
-            AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, xOff, 0, 0),
-            Size = UDim2.fromOffset(46, 36), BackgroundColor3 = hoverColor,
-            BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = header,
+        local titleLabel = label({
+            Position = UDim2.fromOffset(24, 0),
+            Size = UDim2.new(1, -130, 1, 0),
+            Text = (self.Active and self.Active.Name) or "",
+            Font = Enum.Font.BuilderSansBold, TextSize = 22,
+            Parent = header,
         })
-        icon({
-            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-            Size = UDim2.fromOffset(14, 14), Parent = b,
-        }, iconName, T.Text)
-        track(b.MouseEnter:Connect(function() tween(b, ti(0.15), { BackgroundTransparency = hoverTransparency }) end))
-        track(b.MouseLeave:Connect(function() tween(b, ti(0.15), { BackgroundTransparency = 1 }) end))
-        return b
+        registerTheme(titleLabel, "TextColor3", "Text")
+
+        if not keepPages then
+            keepPages = new("Frame", {
+                Name = "Pages",
+                BackgroundTransparency = 1,
+                Parent = main,
+            })
+            self.Pages = keepPages
+        else
+            keepPages.Parent = main
+        end
+        keepPages.Position = UDim2.fromOffset(0, 56)
+        keepPages.Size = UDim2.new(1, 0, 1, -56)
+
+        self.Nav = navFrame
+        self.Header = header
+        self.TitleLabel = titleLabel
+        self.Main = main
+        self.ProfileFrame = profileFrame
+
+        local function ctrlButton(iconName, xOff, hoverColor, hoverTransparency)
+            local b = new("TextButton", {
+                AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, xOff, 0, 0),
+                Size = UDim2.fromOffset(46, 36), BackgroundColor3 = hoverColor,
+                BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = header,
+            })
+            icon({
+                AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+                Size = UDim2.fromOffset(14, 14), Parent = b,
+            }, iconName, T.Text)
+            track(b.MouseEnter:Connect(function() tween(b, ti(0.15), { BackgroundTransparency = hoverTransparency }) end))
+            track(b.MouseLeave:Connect(function() tween(b, ti(0.15), { BackgroundTransparency = 1 }) end))
+            return b
+        end
+
+        local closeButton = ctrlButton("close", 0, T.Danger, 0)
+        local minButton = ctrlButton("minimize", -46, Color3.new(1, 1, 1), 0.92)
+
+        makeDraggable(self, { header, profileFrame and profileFrame:FindFirstChild("Sidebar") or header })
+
+        track(minButton.Activated:Connect(function()
+            self:Close()
+            Alion:Notify({ Title = "Window hidden", Content = "Press " .. self.ToggleKey.Name .. " to open it again.", Icon = "info", Duration = 3 })
+        end))
+        track(closeButton.Activated:Connect(function() self:Destroy() end))
+
+        for _, t in ipairs(self.Tabs) do
+            self:_buildNavItem(t, pos)
+        end
+
+        if self.Indicator and self.Active and pos == "Left" then
+            self.Indicator.Position = UDim2.fromOffset(0, (self.Active.Index - 1) * 42 + 11)
+            self.Indicator.Visible = true
+        end
     end
-
-    local closeButton = ctrlButton("close", 0, T.Danger, 0)
-    local minButton = ctrlButton("minimize", -46, Color3.new(1, 1, 1), 0.92)
-
-    makeDraggable(self, { header, profileFrame and profileFrame:FindFirstChild("Sidebar") or header })
-
-    track(minButton.Activated:Connect(function()
-        self:Close()
-        Alion:Notify({ Title = "Window hidden", Content = "Press " .. self.ToggleKey.Name .. " to open it again.", Icon = "info", Duration = 3 })
-    end))
-    track(closeButton.Activated:Connect(function() self:Destroy() end))
-
-    for _, t in ipairs(self.Tabs) do
-        self:_buildNavItem(t, pos)
-    end
-
-    if self.Indicator and self.Active and pos == "Left" then
-        self.Indicator.Position = UDim2.fromOffset(0, (self.Active.Index - 1) * 42 + 11)
-        self.Indicator.Visible = true
-    end
-end
 
     function win:_buildNavItem(tab, pos)
         if pos == "Left" then
