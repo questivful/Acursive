@@ -1,6 +1,17 @@
 local Alion = {}
-Alion.Version = "2.0.2"
+Alion.Version = "2.0.3"
 Alion.__index = Alion
+Alion._debug = true
+
+local function dbg(...)
+    if Alion._debug == false then return end
+    local n = select("#", ...)
+    local parts = {}
+    for i = 1, n do parts[i] = tostring(select(i, ...)) end
+    print("[Alion] " .. table.concat(parts, " "))
+end
+
+dbg("=== Alion v" .. Alion.Version .. " loading ===")
 
 if getgenv and type(getgenv().Alion) == "table" and getgenv().Alion.Cleanup then
     pcall(function() getgenv().Alion:Cleanup() end)
@@ -13,7 +24,10 @@ local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 local CoreGui          = game:GetService("CoreGui")
 
+dbg("Services resolved:", "Players", "TweenService", "UserInputService", "RunService", "CoreGui")
+
 local LocalPlayer = Players.LocalPlayer
+dbg("LocalPlayer:", LocalPlayer and LocalPlayer.Name or "nil")
 
 local ICON_SHEET = "rbxassetid://89989658646441"
 local ICON_NAMES = {
@@ -250,7 +264,9 @@ local function fire(cb, ...)
     local args = table.pack(...)
     task.spawn(function()
         local ok, err = pcall(cb, table.unpack(args, 1, args.n))
-        if not ok then warn("[Alion] " .. tostring(err)) end
+        if not ok then
+            warn("[Alion] Callback error: " .. tostring(err))
+        end
     end)
 end
 
@@ -292,6 +308,7 @@ local function getGui()
         Parent = parent,
     })
     Alion._gui = gui
+    dbg("Created ScreenGui under", parent:GetFullName())
     return gui
 end
 
@@ -311,14 +328,21 @@ end
 local function applyAccentColor(color)
     Alion.Accent = color
     for _, b in ipairs(Alion._accentBindings) do
-        if b.fn then pcall(b.fn)
-        elseif b.inst and b.inst.Parent then pcall(function() b.inst[b.prop] = color end) end
+        if b.fn then
+            pcall(b.fn)
+        elseif b.inst and b.inst.Parent then
+            pcall(function() b.inst[b.prop] = color end)
+        end
     end
 end
 
 local function applyTheme(name, keepAccent)
     local preset = ThemePresets[name]
-    if not preset then return end
+    if not preset then
+        warn("[Alion] Unknown theme: " .. tostring(name))
+        return
+    end
+    dbg("applyTheme:", name, "keepAccent:", keepAccent)
     Alion._activeTheme = name
     Alion.Settings.Theme = name
     for k, v in pairs(preset) do
@@ -344,6 +368,7 @@ end
 function Alion:SetAccent(color)
     Alion._customAccent = color
     applyAccentColor(color)
+    dbg("SetAccent:", tostring(color))
 end
 function Alion:GetAccent() return Alion.Accent end
 function Alion:SetTheme(name, keepAccent)
@@ -357,8 +382,30 @@ function Alion:GetThemeList()
     return t
 end
 function Alion:SetNotificationLower(v) self._notifLower = v and true or false end
+function Alion:SetDebug(v) self._debug = v and true or false end
+function Alion:GetDebug() return self._debug ~= false end
+function Alion:Debug(...)
+    local n = select("#", ...)
+    local parts = {}
+    for i = 1, n do parts[i] = tostring(select(i, ...)) end
+    print("[Alion Debug] " .. table.concat(parts, " "))
+end
+function Alion:GetInfo()
+    return {
+        Version = self.Version,
+        Theme = self._activeTheme,
+        Accent = self.Accent,
+        Windows = #self._windows,
+        ThemeBindings = #self._themeBindings,
+        AccentBindings = #self._accentBindings,
+        Keybinds = #self._keybinds,
+        Connections = #self._connections,
+        HasGUI = self._gui ~= nil and self._gui.Parent ~= nil,
+    }
+end
 
 function Alion:Cleanup()
+    dbg("Cleanup called")
     for _, c in ipairs(self._connections or {}) do pcall(function() c:Disconnect() end) end
     self._connections = {}
     self._keybinds = {}
@@ -547,7 +594,6 @@ end
 
 local function buildCharacterInto(world, target, mode)
     if not target then return nil end
-
     if typeof(target) == "Instance" then
         if target:IsA("Player") then
             local char = target.Character
@@ -559,7 +605,6 @@ local function buildCharacterInto(world, target, mode)
         end
         return nil
     end
-
     if type(target) == "number" then
         local plr = Players:GetPlayerByUserId(target)
         if plr and plr.Character then
@@ -567,7 +612,6 @@ local function buildCharacterInto(world, target, mode)
         end
         return buildFromUserId(world, target, mode)
     end
-
     return nil
 end
 
@@ -698,9 +742,7 @@ local function makeDraggable(win, handles)
     table.insert(win._dragConns, UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local d = input.Position - dragStart
-            tween(win.Root, TweenInfo.new(0.08, Enum.EasingStyle.Sine), {
-                Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y),
-            })
+            win.Root.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
         end
     end))
     table.insert(win._dragConns, UserInputService.InputEnded:Connect(function(input)
@@ -711,6 +753,7 @@ local function makeDraggable(win, handles)
 end
 
 local function styleNav(tab, active)
+    if not tab or not tab.NavBtn or not tab.NavBtn.Parent then return end
     tween(tab.NavBtn, ti(0.25), { BackgroundTransparency = active and 0.90 or 1 })
     tween(tab.NavIcon, ti(0.25), { ImageColor3 = active and Alion.Accent or T.SubText })
     tween(tab.NavName, ti(0.25), { TextColor3 = active and T.Text or T.SubText })
@@ -718,6 +761,7 @@ end
 
 function Alion:CreateWindow(opts)
     opts = opts or {}
+    dbg("CreateWindow start. Title:", opts.Title or "nil")
     local gui = getGui()
     local camera = workspace.CurrentCamera
     local vp = camera and camera.ViewportSize or Vector2.new(1280, 720)
@@ -740,6 +784,7 @@ function Alion:CreateWindow(opts)
         _transparency = Alion.Settings.Transparency,
         _rootScale = Alion.Settings.Scale,
         Size = Vector2.new(width, height),
+        _pos = nil,
     }, Window)
 
     table.insert(Alion._windows, win)
@@ -784,17 +829,26 @@ function Alion:CreateWindow(opts)
     win.NavItems = {}
 
     function win:_refreshTheme()
+        dbg("Window refreshTheme triggered")
         self:_layout()
     end
 
     function win:_layout()
         if self._destroyed then return end
+        dbg("Window:_layout pos=", self._navPos, "activeTab=", self.Active and self.Active.Name or "nil")
 
         local keepPages = self.Pages
+        if keepPages then
+            keepPages.Parent = nil
+        end
+
         for _, c in ipairs(content:GetChildren()) do
-            if c ~= keepPages then c:Destroy() end
+            if c ~= keepPages then
+                pcall(function() c:Destroy() end)
+            end
         end
         self.NavItems = {}
+        self.Indicator = nil
 
         local pos = self._navPos or "Left"
         local showProfile = self._showProfile
@@ -873,15 +927,15 @@ function Alion:CreateWindow(opts)
                 registerTheme(fl, "TextColor3", "Muted")
             end
         else
-            navFrame = new("Frame", {
+            local topBar = new("Frame", {
                 Name = "TopBar",
                 Position = (pos == "Top") and UDim2.fromOffset(0, 0) or UDim2.new(0, 0, 1, -navH),
                 Size = UDim2.new(1, 0, 0, navH),
                 BackgroundColor3 = T.Nav, BackgroundTransparency = 0.15,
                 Parent = content,
             })
-            registerTheme(navFrame, "BackgroundColor3", "Nav")
-            local nvStroke = stroke(navFrame, T.Divider, 1, 0.4)
+            registerTheme(topBar, "BackgroundColor3", "Nav")
+            local nvStroke = stroke(topBar, T.Divider, 1, 0.4)
             registerTheme(nvStroke, "Color", "Divider")
 
             local navScroll = new("ScrollingFrame", {
@@ -892,7 +946,7 @@ function Alion:CreateWindow(opts)
                 AutomaticCanvasSize = Enum.AutomaticSize.X,
                 ScrollingDirection = Enum.ScrollingDirection.X,
                 ElasticBehavior = Enum.ElasticBehavior.Never,
-                Parent = navFrame,
+                Parent = topBar,
             })
             new("UIListLayout", {
                 Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder,
@@ -1002,7 +1056,12 @@ function Alion:CreateWindow(opts)
         local closeButton = ctrlButton("close", 0, T.Danger, 0)
         local minButton = ctrlButton("minimize", -46, Color3.new(1, 1, 1), 0.92)
 
-        makeDraggable(self, { header, profileFrame and profileFrame:FindFirstChild("Sidebar") or header })
+        local dragHandle = header
+        if pos == "Left" and profileFrame then
+            local sb = profileFrame:FindFirstChild("Sidebar")
+            if sb then dragHandle = sb end
+        end
+        makeDraggable(self, { header, dragHandle })
 
         track(minButton.Activated:Connect(function()
             self:Close()
@@ -1014,9 +1073,25 @@ function Alion:CreateWindow(opts)
             self:_buildNavItem(t, pos)
         end
 
+        if self.Active then
+            styleNav(self.Active, true)
+        end
+
         if self.Indicator and self.Active and pos == "Left" then
             self.Indicator.Position = UDim2.fromOffset(0, (self.Active.Index - 1) * 42 + 11)
             self.Indicator.Visible = true
+        end
+
+        if self._open then
+            body.BackgroundTransparency = self._transparency or 0.06
+            bodyStroke.Transparency = 0.15
+            content.GroupTransparency = 0
+            if bodyShadow then pcall(function() bodyShadow.Transparency = 0.5 end) end
+        else
+            body.BackgroundTransparency = 1
+            bodyStroke.Transparency = 1
+            content.GroupTransparency = 1
+            if bodyShadow then pcall(function() bodyShadow.Transparency = 1 end) end
         end
     end
 
@@ -1123,6 +1198,7 @@ function Alion:CreateWindow(opts)
     end
 
     win:Open()
+    dbg("CreateWindow complete. Tabs:", #win.Tabs)
     return win
 end
 
@@ -1161,6 +1237,7 @@ function Window:_buildSettingsTab()
         Suffix = "",
         Callback = function(v)
             self._transparency = v
+            Alion.Settings.Transparency = v
             self.Body.BackgroundTransparency = v
         end,
     })
@@ -1172,6 +1249,7 @@ function Window:_buildSettingsTab()
         Value = self._rootScale,
         Callback = function(v)
             self._rootScale = v
+            Alion.Settings.Scale = v
             tween(self.Scale, ti(0.2), { Scale = (self._open and 1 or 0.92) * v })
         end,
     })
@@ -1249,12 +1327,13 @@ function Window:_buildSettingsTab()
 end
 
 function Window:SetVisible(v)
-    if self._open == v or (self._destroyed and v) then return end
+    if self._destroyed then return end
+    if self._open == v then return end
     self._open = v
     self._token += 1
     local token = self._token
     if v then
-        local target = self._pos or self.Root.Position
+        local target = self._pos or UDim2.new(0.5, 0, 0.5, 0)
         self.Root.Position = UDim2.new(target.X.Scale, target.X.Offset, target.Y.Scale, target.Y.Offset + 24)
         self.Root.Visible = true
         local info = ti(0.5)
@@ -1275,7 +1354,7 @@ function Window:SetVisible(v)
         tween(self.BodyStroke, info, { Transparency = 1 })
         if self.Shadow then pcall(function() tween(self.Shadow, info, { Transparency = 1 }) end) end
         task.delay(0.32, function()
-            if self._token == token then self.Root.Visible = false end
+            if self._token == token and self.Root then self.Root.Visible = false end
         end)
     end
 end
@@ -1289,6 +1368,7 @@ function Window:Notify(o) Alion:Notify(o) end
 function Window:Destroy()
     if self._destroyed then return end
     self._destroyed = true
+    dbg("Window:Destroy")
     if self._open then self:SetVisible(false) end
     if self._dragConns then
         for _, c in ipairs(self._dragConns) do pcall(function() c:Disconnect() end) end
@@ -1302,25 +1382,33 @@ end
 
 function Window:SelectTab(target)
     if type(target) == "number" then target = self.Tabs[target] end
-    if not target or self.Active == target then return end
+    if not target then return end
+    if self.Active == target then
+        styleNav(target, true)
+        return
+    end
     local prev = self.Active
     self.Active = target
-    if prev then
+    if prev and prev.TabPage and prev.TabPage.Parent then
         styleNav(prev, false)
         tween(prev.TabPage, ti(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In), { GroupTransparency = 1 })
         task.delay(0.2, function()
-            if self.Active ~= prev then prev.TabPage.Visible = false end
+            if self.Active ~= prev and prev.TabPage and prev.TabPage.Parent then
+                prev.TabPage.Visible = false
+            end
         end)
     end
-    styleNav(target, true)
-    target.TabPage.Position = UDim2.fromOffset(0, 18)
-    target.TabPage.GroupTransparency = 1
-    target.TabPage.Visible = true
-    target.TabScroll.CanvasPosition = Vector2.zero
-    tween(target.TabPage, ti(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0.08), {
-        Position = UDim2.fromOffset(0, 0),
-        GroupTransparency = 0,
-    })
+    if target.TabPage and target.TabPage.Parent then
+        styleNav(target, true)
+        target.TabPage.Position = UDim2.fromOffset(0, 18)
+        target.TabPage.GroupTransparency = 1
+        target.TabPage.Visible = true
+        if target.TabScroll then target.TabScroll.CanvasPosition = Vector2.zero end
+        tween(target.TabPage, ti(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0.08), {
+            Position = UDim2.fromOffset(0, 0),
+            GroupTransparency = 0,
+        })
+    end
     if self.Indicator and self._navPos == "Left" then
         local y = (target.Index - 1) * 42 + 11
         if not prev then
@@ -1397,6 +1485,7 @@ function Window:Tab(opts)
         self:_buildNavItem(tab, self._navPos or "Left")
     end
     if index == 1 and not self.Active then self:SelectTab(tab) end
+    dbg("Tab created:", name, "index:", index)
     return tab
 end
 
@@ -1566,9 +1655,9 @@ function Section:_row(o, reserve)
 end
 
 local function finishElement(obj, row, title, desc)
-    function obj:SetTitle(text) title.Text = text end
+    function obj:SetTitle(text) if title then title.Text = text end end
     function obj:SetDescription(text) if desc then desc.Text = text end end
-    function obj:Destroy() row:Destroy() end
+    function obj:Destroy() if row then row:Destroy() end end
     return obj
 end
 
@@ -1589,7 +1678,6 @@ function Section:Paragraph(o)
     o = o or {}
     local text = o.Content or o.Text or ""
     local title = o.Title
-    local h = title and 22 or 0
     local order = (self._order or 0) + 1
     self._order = order
     local row = new("Frame", {
@@ -3051,5 +3139,12 @@ function Section:AvatarGrid(o)
 end
 
 if getgenv then getgenv().Alion = Alion end
+
+dbg("=== Alion v" .. Alion.Version .. " loaded successfully ===")
+dbg("Accent:", tostring(Alion.Accent))
+dbg("Theme:", Alion._activeTheme)
+dbg("Windows:", #Alion._windows)
+dbg("Ready. Use Alion:CreateWindow{...} to spawn UI.")
+dbg("Set Alion._debug = false to silence these messages.")
 
 return Alion
