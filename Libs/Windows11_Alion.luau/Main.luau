@@ -1,5 +1,5 @@
 local Alion = {}
-Alion.Version = "2.0.0"
+Alion.Version = "2.0.1"
 Alion.__index = Alion
 
 if getgenv and type(getgenv().Alion) == "table" and getgenv().Alion.Cleanup then
@@ -502,7 +502,6 @@ local function buildCharacterInto(world, target, mode)
                         d.Transparency = 1
                     end
                 end
-                local bcf = CFrame.new(Vector3.zero) * head.CFrame:ToObjectSpace(head.CFrame)
                 clone:PivotTo(head.CFrame - head.Position)
             end
         else
@@ -516,6 +515,11 @@ local function buildCharacterInto(world, target, mode)
     elseif typeof(target) == "number" then
         local plr = Players:GetPlayerByUserId(target)
         if plr and plr.Character then return buildCharacterInto(world, plr.Character, mode) end
+        local ok, desc = pcall(function() return Players:GetHumanoidDescriptionFromUserId(target) end)
+        if ok and desc then
+            local ok2, model = pcall(function() return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15) end)
+            if ok2 and model then return buildCharacterInto(world, model, mode) end
+        end
     end
     return nil
 end
@@ -619,29 +623,34 @@ local Section = {}
 Section.__index = Section
 
 local function makeDraggable(win, handles)
+    if win._dragConns then
+        for _, c in ipairs(win._dragConns) do pcall(function() c:Disconnect() end) end
+    end
+    win._dragConns = {}
+
     local dragging, dragStart, startPos
     for _, handle in ipairs(handles) do
-        track(handle.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = true
-                dragStart = input.Position
-                startPos = win.Root.Position
-                local c
-                c = input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then
-                        dragging = false
-                        c:Disconnect()
-                    end
-                end)
-            end
-        end))
+        if handle then
+            table.insert(win._dragConns, handle.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                    dragging = true
+                    dragStart = input.Position
+                    startPos = win.Root.Position
+                end
+            end))
+        end
     end
-    track(UserInputService.InputChanged:Connect(function(input)
+    table.insert(win._dragConns, UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local d = input.Position - dragStart
             tween(win.Root, TweenInfo.new(0.08, Enum.EasingStyle.Sine), {
                 Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y),
             })
+        end
+    end))
+    table.insert(win._dragConns, UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
         end
     end))
 end
@@ -718,7 +727,6 @@ function Alion:CreateWindow(opts)
     win.Shadow = bodyShadow
     win.Content = content
     win.NavItems = {}
-    win.Tabs = {}
 
     function win:_refreshTheme()
         self:_layout()
@@ -726,8 +734,10 @@ function Alion:CreateWindow(opts)
 
     function win:_layout()
         if self._destroyed then return end
+
+        local keepPages = self.Pages
         for _, c in ipairs(content:GetChildren()) do
-            if c.Name ~= "TempKeep" then c:Destroy() end
+            if c ~= keepPages then c:Destroy() end
         end
         self.NavItems = {}
 
@@ -736,22 +746,8 @@ function Alion:CreateWindow(opts)
         local showFooter = self._showFooter
 
         local sidebarW, navH = 216, 56
-        local mainX, mainY, mainW, mainH = 0, 0, 1, 1
-        local navX, navY, navW, navH_ = 0, 0, 0, 0
-
-        if pos == "Left" then
-            mainX = UDim.new(0, sidebarW)
-            mainW = UDim.new(1, -sidebarW)
-        elseif pos == "Top" then
-            mainY = UDim.new(0, navH)
-            mainH = UDim.new(1, -navH)
-        elseif pos == "Bottom" then
-            mainH = UDim.new(1, -navH)
-        end
-
         local profileFrame
         local navFrame
-        local titleArea
 
         if pos == "Left" then
             profileFrame = new("Frame", {
@@ -760,7 +756,7 @@ function Alion:CreateWindow(opts)
                 BackgroundTransparency = 1,
                 Parent = content,
             })
-            local sideDrag = new("Frame", {
+            new("Frame", {
                 Size = UDim2.new(1, 0, 0, 72),
                 BackgroundTransparency = 1,
                 Active = true,
@@ -785,23 +781,14 @@ function Alion:CreateWindow(opts)
                     if ok and avatar.Parent then avatar.Image = img end
                 end)
                 local nameLbl = label({
-                    Position = UDim2.fromOffset(64, 16),
-                    Size = UDim2.new(1, -76, 0, 20),
-                    Text = LocalPlayer.DisplayName,
-                    Font = Enum.Font.BuilderSansBold,
-                    TextSize = 15,
-                    TextTruncate = Enum.TextTruncate.AtEnd,
-                    Parent = profileFrame,
+                    Position = UDim2.fromOffset(64, 16), Size = UDim2.new(1, -76, 0, 20),
+                    Text = LocalPlayer.DisplayName, Font = Enum.Font.BuilderSansBold, TextSize = 15,
+                    TextTruncate = Enum.TextTruncate.AtEnd, Parent = profileFrame,
                 })
                 local subLbl = label({
-                    Position = UDim2.fromOffset(64, 36),
-                    Size = UDim2.new(1, -76, 0, 18),
-                    Text = opts.Title or "Alion",
-                    Font = Enum.Font.BuilderSans,
-                    TextSize = 12,
-                    TextColor3 = T.SubText,
-                    TextTruncate = Enum.TextTruncate.AtEnd,
-                    Parent = profileFrame,
+                    Position = UDim2.fromOffset(64, 36), Size = UDim2.new(1, -76, 0, 18),
+                    Text = opts.Title or "Alion", Font = Enum.Font.BuilderSans, TextSize = 12,
+                    TextColor3 = T.SubText, TextTruncate = Enum.TextTruncate.AtEnd, Parent = profileFrame,
                 })
                 registerTheme(nameLbl, "TextColor3", "Text")
                 registerTheme(subLbl, "TextColor3", "SubText")
@@ -813,26 +800,20 @@ function Alion:CreateWindow(opts)
                 BackgroundTransparency = 1,
                 Parent = profileFrame,
             })
-            win.Indicator = new("Frame", {
+            self.Indicator = new("Frame", {
                 Size = UDim2.fromOffset(3, 16),
                 Position = UDim2.fromOffset(0, 11),
                 BackgroundColor3 = Alion.Accent,
-                BorderSizePixel = 0,
-                Visible = false,
-                ZIndex = 5,
+                BorderSizePixel = 0, Visible = false, ZIndex = 5,
                 Parent = navFrame,
             })
-            corner(win.Indicator, 100)
-            registerAccent(win.Indicator)
+            corner(self.Indicator, 100)
+            registerAccent(self.Indicator)
             if showFooter then
                 local fl = label({
-                    Position = UDim2.new(0, 16, 1, -34),
-                    Size = UDim2.new(1, -32, 0, 18),
-                    Text = "Alion v" .. Alion.Version,
-                    Font = Enum.Font.BuilderSans,
-                    TextSize = 12,
-                    TextColor3 = T.Muted,
-                    Parent = profileFrame,
+                    Position = UDim2.new(0, 16, 1, -34), Size = UDim2.new(1, -32, 0, 18),
+                    Text = "Alion v" .. Alion.Version, Font = Enum.Font.BuilderSans, TextSize = 12,
+                    TextColor3 = T.Muted, Parent = profileFrame,
                 })
                 registerTheme(fl, "TextColor3", "Muted")
             end
@@ -841,8 +822,7 @@ function Alion:CreateWindow(opts)
                 Name = "TopBar",
                 Position = (pos == "Top") and UDim2.fromOffset(0, 0) or UDim2.new(0, 0, 1, -navH),
                 Size = UDim2.new(1, 0, 0, navH),
-                BackgroundColor3 = T.Nav,
-                BackgroundTransparency = 0.15,
+                BackgroundColor3 = T.Nav, BackgroundTransparency = 0.15,
                 Parent = content,
             })
             registerTheme(navFrame, "BackgroundColor3", "Nav")
@@ -852,9 +832,7 @@ function Alion:CreateWindow(opts)
             local navScroll = new("ScrollingFrame", {
                 Position = UDim2.fromOffset(showProfile and 210 or 12, 0),
                 Size = UDim2.new(1, showProfile and -220 or -12, 1, 0),
-                BackgroundTransparency = 1,
-                BorderSizePixel = 0,
-                ScrollBarThickness = 0,
+                BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
                 CanvasSize = UDim2.new(),
                 AutomaticCanvasSize = Enum.AutomaticSize.X,
                 ScrollingDirection = Enum.ScrollingDirection.X,
@@ -862,11 +840,9 @@ function Alion:CreateWindow(opts)
                 Parent = navFrame,
             })
             new("UIListLayout", {
-                Padding = UDim.new(0, 4),
-                SortOrder = Enum.SortOrder.LayoutOrder,
+                Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder,
                 FillDirection = Enum.FillDirection.Horizontal,
-                VerticalAlignment = Enum.VerticalAlignment.Center,
-                Parent = navScroll,
+                VerticalAlignment = Enum.VerticalAlignment.Center, Parent = navScroll,
             })
             navFrame = navScroll
 
@@ -881,9 +857,7 @@ function Alion:CreateWindow(opts)
                 local avatar = new("ImageLabel", {
                     Size = UDim2.fromOffset(30, 30),
                     Position = UDim2.fromOffset(14, (navH - 30) / 2),
-                    BackgroundColor3 = T.Control,
-                    Image = "",
-                    Parent = pFrame,
+                    BackgroundColor3 = T.Control, Image = "", Parent = pFrame,
                 })
                 corner(avatar, 100)
                 registerTheme(avatar, "BackgroundColor3", "Control")
@@ -894,13 +868,9 @@ function Alion:CreateWindow(opts)
                     if ok and avatar.Parent then avatar.Image = img end
                 end)
                 label({
-                    Position = UDim2.fromOffset(52, 0),
-                    Size = UDim2.new(1, -60, 1, 0),
-                    Text = LocalPlayer.DisplayName,
-                    Font = Enum.Font.BuilderSansBold,
-                    TextSize = 14,
-                    TextTruncate = Enum.TextTruncate.AtEnd,
-                    Parent = pFrame,
+                    Position = UDim2.fromOffset(52, 0), Size = UDim2.new(1, -60, 1, 0),
+                    Text = LocalPlayer.DisplayName, Font = Enum.Font.BuilderSansBold,
+                    TextSize = 14, TextTruncate = Enum.TextTruncate.AtEnd, Parent = pFrame,
                 })
                 profileFrame = pFrame
             end
@@ -908,8 +878,8 @@ function Alion:CreateWindow(opts)
 
         local main = new("Frame", {
             Name = "Main",
-            Position = UDim2.new(mainX, mainY.Scale and 0 or 0, mainY.Scale, mainY.Offset),
-            Size = UDim2.new(mainW.Scale, mainW.Offset, mainH.Scale, mainH.Offset),
+            Position = UDim2.fromOffset(0, 0),
+            Size = UDim2.fromScale(1, 1),
             BackgroundTransparency = 1,
             Parent = content,
         })
@@ -934,44 +904,33 @@ function Alion:CreateWindow(opts)
         local titleLabel = label({
             Position = UDim2.fromOffset(24, 0),
             Size = UDim2.new(1, -130, 1, 0),
-            Text = "",
-            Font = Enum.Font.BuilderSansBold,
-            TextSize = 22,
+            Text = (self.Active and self.Active.Name) or "",
+            Font = Enum.Font.BuilderSansBold, TextSize = 22,
             Parent = header,
         })
         registerTheme(titleLabel, "TextColor3", "Text")
 
-        local pages = new("Frame", {
-            Name = "Pages",
-            Position = UDim2.fromOffset(0, 56),
-            Size = UDim2.new(1, 0, 1, -56),
-            BackgroundTransparency = 1,
-            Parent = main,
-        })
+        if keepPages then
+            keepPages.Parent = main
+            keepPages.Position = UDim2.fromOffset(0, 56)
+            keepPages.Size = UDim2.new(1, 0, 1, -56)
+        end
 
-        win.Nav = navFrame
-        win.Pages = pages
-        win.Header = header
-        win.TitleLabel = titleLabel
-        win.Main = main
-        win.ProfileFrame = profileFrame
+        self.Nav = navFrame
+        self.Header = header
+        self.TitleLabel = titleLabel
+        self.Main = main
+        self.ProfileFrame = profileFrame
 
         local function ctrlButton(iconName, xOff, hoverColor, hoverTransparency)
             local b = new("TextButton", {
-                AnchorPoint = Vector2.new(1, 0),
-                Position = UDim2.new(1, xOff, 0, 0),
-                Size = UDim2.fromOffset(46, 36),
-                BackgroundColor3 = hoverColor,
-                BackgroundTransparency = 1,
-                Text = "",
-                AutoButtonColor = false,
-                Parent = header,
+                AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, xOff, 0, 0),
+                Size = UDim2.fromOffset(46, 36), BackgroundColor3 = hoverColor,
+                BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Parent = header,
             })
             icon({
-                AnchorPoint = Vector2.new(0.5, 0.5),
-                Position = UDim2.fromScale(0.5, 0.5),
-                Size = UDim2.fromOffset(14, 14),
-                Parent = b,
+                AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+                Size = UDim2.fromOffset(14, 14), Parent = b,
             }, iconName, T.Text)
             track(b.MouseEnter:Connect(function() tween(b, ti(0.15), { BackgroundTransparency = hoverTransparency }) end))
             track(b.MouseLeave:Connect(function() tween(b, ti(0.15), { BackgroundTransparency = 1 }) end))
@@ -981,25 +940,21 @@ function Alion:CreateWindow(opts)
         local closeButton = ctrlButton("close", 0, T.Danger, 0)
         local minButton = ctrlButton("minimize", -46, Color3.new(1, 1, 1), 0.92)
 
-        makeDraggable(win, { header, profileFrame and profileFrame:FindFirstChild("Sidebar") or header })
+        makeDraggable(self, { header, profileFrame and profileFrame:FindFirstChild("Sidebar") or header })
 
         track(minButton.Activated:Connect(function()
-            win:Close()
-            Alion:Notify({ Title = "Window hidden", Content = "Press " .. win.ToggleKey.Name .. " to open it again.", Icon = "info", Duration = 3 })
+            self:Close()
+            Alion:Notify({ Title = "Window hidden", Content = "Press " .. self.ToggleKey.Name .. " to open it again.", Icon = "info", Duration = 3 })
         end))
-        track(closeButton.Activated:Connect(function() win:Destroy() end))
+        track(closeButton.Activated:Connect(function() self:Destroy() end))
 
-        for _, t in ipairs(win.Tabs) do
-            win:_buildNavItem(t, pos)
+        for _, t in ipairs(self.Tabs) do
+            self:_buildNavItem(t, pos)
         end
 
-        if win.Indicator then
-            if win.Active then
-                local idx = win.Active.Index
-                local y = pos == "Left" and ((idx - 1) * 42 + 11) or 0
-                win.Indicator.Position = UDim2.fromOffset(0, y)
-                win.Indicator.Visible = pos == "Left"
-            end
+        if self.Indicator and self.Active and pos == "Left" then
+            self.Indicator.Position = UDim2.fromOffset(0, (self.Active.Index - 1) * 42 + 11)
+            self.Indicator.Visible = true
         end
     end
 
@@ -1273,6 +1228,10 @@ function Window:Destroy()
     if self._destroyed then return end
     self._destroyed = true
     if self._open then self:SetVisible(false) end
+    if self._dragConns then
+        for _, c in ipairs(self._dragConns) do pcall(function() c:Disconnect() end) end
+        self._dragConns = nil
+    end
     for i, w in ipairs(Alion._windows) do
         if w == self then table.remove(Alion._windows, i) break end
     end
@@ -1372,7 +1331,7 @@ function Window:Tab(opts)
         Elements = {},
     }, Tab)
     table.insert(self.Tabs, tab)
-    if not self._destroyed then
+    if not self._destroyed and self.Nav then
         self:_buildNavItem(tab, self._navPos or "Left")
     end
     if index == 1 and not self.Active then self:SelectTab(tab) end
@@ -2770,12 +2729,13 @@ function Section:CharacterPreview(o)
         PaddingRight = UDim.new(0, 16),
         Parent = header,
     })
-    label({
+    local titleLbl = label({
         Size = UDim2.new(1, 0, 1, 0),
         Text = o.Title or "Preview",
         TextColor3 = T.Text,
         Parent = header,
     })
+    registerTheme(titleLbl, "TextColor3", "Text")
 
     local holder = new("Frame", {
         Size = UDim2.new(1, 0, 0, size),
@@ -2922,12 +2882,13 @@ function Section:AvatarGrid(o)
             PaddingRight = UDim.new(0, 16),
             Parent = header,
         })
-        label({
+        local ht = label({
             Size = UDim2.new(1, 0, 1, 0),
             Text = o.Title,
             TextColor3 = T.Text,
             Parent = header,
         })
+        registerTheme(ht, "TextColor3", "Text")
     end
     local grid = new("Frame", {
         Position = UDim2.fromOffset(0, o.Title and 48 or 0),
@@ -2968,10 +2929,11 @@ function Section:AvatarGrid(o)
         registerTheme(cell, "BackgroundColor3", "Input")
         registerTheme(cs, "Color", "Stroke")
 
+        local target = entry.Target or entry.UserId or entry
         local vp = makeCharacterViewport({
             Parent = cell,
             Size = UDim2.new(1, -4, 1, -26),
-            Target = entry.Target or entry.UserId or entry,
+            Target = target,
             Mode = "Head",
             Spin = true,
             SpinSpeed = 40,
@@ -3017,6 +2979,8 @@ function Section:AvatarGrid(o)
         end
         cells = {}
         for i, e in ipairs(entries or {}) do buildCell(e, i) end
+        grid.Size = UDim2.new(1, 0, 0, layout.AbsoluteContentSize.Y + 12)
+        row.Size = UDim2.new(1, 0, 0, (o.Title and 48 or 0) + layout.AbsoluteContentSize.Y + 12)
     end
     function obj:GetCells() return cells end
 
