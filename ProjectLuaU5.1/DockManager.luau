@@ -420,7 +420,7 @@ local toporder = 10
 local sideorder = 8
 local slide = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local slides = {}
-local sides, hint
+local sides, hint, hintind, ltoggle, rtoggle
 local started = false
 local redraw
 local watchlist = {}
@@ -437,18 +437,20 @@ local function updateglobal()
 			pcall(function() e.i[e.p] = v end)
 		end
 	end
-	if sides then
-		sides.ltoggle.BackgroundColor3 = st.colors.btn
-		sides.ltoggle.TextColor3 = st.colors.ico
-		sides.ltoggle.BorderColor3 = st.colors.edge
-		sides.rtoggle.BackgroundColor3 = st.colors.btn
-		sides.rtoggle.TextColor3 = st.colors.ico
-		sides.rtoggle.BorderColor3 = st.colors.edge
-		sides.ltoggle.Size = UDim2.new(0, st.docking.togglew, 0, st.docking.toggleh)
-		sides.rtoggle.Size = UDim2.new(0, st.docking.togglew, 0, st.docking.toggleh)
+	if ltoggle then
+		ltoggle.BackgroundColor3 = st.colors.btn
+		ltoggle.TextColor3 = st.colors.ico
+		ltoggle.BorderColor3 = st.colors.edge
+		ltoggle.Size = UDim2.new(0, st.docking.togglew, 0, st.docking.toggleh)
 	end
-	if hint and hint.indicator then
-		hint.indicator.BackgroundColor3 = st.colors.hint
+	if rtoggle then
+		rtoggle.BackgroundColor3 = st.colors.btn
+		rtoggle.TextColor3 = st.colors.ico
+		rtoggle.BorderColor3 = st.colors.edge
+		rtoggle.Size = UDim2.new(0, st.docking.togglew, 0, st.docking.toggleh)
+	end
+	if hintind then
+		hintind.BackgroundColor3 = st.colors.hint
 	end
 end
 
@@ -625,6 +627,11 @@ function dock:cleanup()
 	table.clear(left.wins)
 	table.clear(right.wins)
 	table.clear(watchlist)
+	sides, hint, hintind, ltoggle, rtoggle = nil, nil, nil, nil, nil
+	active = nil
+	started = false
+	left.hidden = true
+	right.hidden = true
 end
 
 function dock.setstyle(s)
@@ -734,7 +741,7 @@ end
 local function dragresize(self, grip, dir)
 	local main = self.parts.main
 	grip.InputBegan:Connect(function(i)
-		if not self.dragging and not self.resizing and self.resizable and self.innerresize then
+		if not self.dragging and not self.resizing and self.canresize and self.innerresize then
 			local isv = dir:find("[NS]") and true
 			local sx = 0
 			if dir:find("W") then sx = -1 elseif dir:find("E") then sx = 1 end
@@ -763,7 +770,7 @@ local function dragresize(self, grip, dir)
 					end
 				end)
 				mov = input.InputChanged:Connect(function(x)
-					if self.resizable and self.innerresize and isdrag(x) then
+					if self.canresize and self.innerresize and isdrag(x) then
 						self:stopanim()
 						local dx = x.Position.X - ix
 						local dy = x.Position.Y - iy
@@ -799,14 +806,14 @@ local function movesides(noanim)
 	stopanim()
 	left.frame.Size = UDim2.new(0, left.w, 1, 0)
 	right.frame.Size = UDim2.new(0, right.w, 1, 0)
-	left.frame.resizer.Position = UDim2.new(0, left.w, 0, 0)
-	right.frame.resizer.Position = UDim2.new(0, -5, 0, 0)
+	left.frame.Resizer.Position = UDim2.new(0, left.w, 0, 0)
+	right.frame.Resizer.Position = UDim2.new(0, -5, 0, 0)
 	local lh = #left.wins == 0 or left.hidden
 	local rh = #right.wins == 0 or right.hidden
 	local lp = (lh and UDim2.new(0, -left.w - 10, 0, 0) or UDim2.new(0, 0, 0, 0))
 	local rp = (rh and UDim2.new(1, 10, 0, 0) or UDim2.new(1, -right.w, 0, 0))
-	sides.ltoggle.Text = lh and ">" or "<"
-	sides.rtoggle.Text = rh and "<" or ">"
+	ltoggle.Text = lh and ">" or "<"
+	rtoggle.Text = rh and "<" or ">"
 	if not noanim then
 		local function ins(...)
 			local t = tween:Create(...)
@@ -815,13 +822,13 @@ local function movesides(noanim)
 		end
 		ins(left.frame, slide, {Position = lp})
 		ins(right.frame, slide, {Position = rp})
-		ins(sides.ltoggle, slide, {Position = UDim2.new(0, #left.wins == 0 and -16 or 0, 0, -36)})
-		ins(sides.rtoggle, slide, {Position = UDim2.new(1, #right.wins == 0 and 0 or -16, 0, -36)})
+		ins(ltoggle, slide, {Position = UDim2.new(0, #left.wins == 0 and -16 or 0, 0, -36)})
+		ins(rtoggle, slide, {Position = UDim2.new(1, #right.wins == 0 and 0 or -16, 0, -36)})
 	else
 		left.frame.Position = lp
 		right.frame.Position = rp
-		sides.ltoggle.Position = UDim2.new(0, #left.wins == 0 and -16 or 0, 0, -36)
-		sides.rtoggle.Position = UDim2.new(1, #right.wins == 0 and 0 or -16, 0, -36)
+		ltoggle.Position = UDim2.new(0, #left.wins == 0 and -16 or 0, 0, -36)
+		rtoggle.Position = UDim2.new(1, #right.wins == 0 and 0 or -16, 0, -36)
 	end
 end
 
@@ -962,10 +969,10 @@ local function drawside(side, noanim)
 			local nt = tmpl:Clone()
 			nt.Position = UDim2.new(0, 0, 0, pos - 4)
 			nt.Size = UDim2.new(1, 0, 0, 4)
-			side.cons[#side.cons + 1] = v.gui.main:GetPropertyChangedSignal("Size"):Connect(function()
+			side.cons[#side.cons + 1] = v.parts.main:GetPropertyChangedSignal("Size"):Connect(function()
 				nt.Position = UDim2.new(0, 0, 0, v.parts.main.Position.Y.Offset + v.parts.main.Size.Y.Offset)
 			end)
-			side.cons[#side.cons + 1] = v.gui.main:GetPropertyChangedSignal("Position"):Connect(function()
+			side.cons[#side.cons + 1] = v.parts.main:GetPropertyChangedSignal("Position"):Connect(function()
 				nt.Position = UDim2.new(0, 0, 0, v.parts.main.Position.Y.Offset + v.parts.main.Size.Y.Offset)
 			end)
 			draggrip(nt, "V", side, i)
@@ -1580,14 +1587,14 @@ function methods:resizable(v)
 	self.parts.rc.Visible = self.canresize and self.innerresize
 end
 
-function methods:innerresize(v)
+function methods:setinnerresize(v)
 	self.innerresize = v
 	self.parts.rc.Visible = self.canresize and self.innerresize
 end
 
 function methods:setaligned(v)
 	self.docked = v
-	self:innerresize(not v)
+	self:setinnerresize(not v)
 	self.parts.main.Active = not v
 	self.parts.edge.Visible = not v and self:getstyle().chrome.showedge
 	if not v then
@@ -1653,7 +1660,7 @@ end
 function methods:close()
 	if self.closed then return end
 	self.closed = true
-	self:innerresize(false)
+	self:setinnerresize(false)
 	local wasact = (active == self)
 	if wasact then active = nil end
 	local p
@@ -1765,7 +1772,7 @@ function methods:show(data)
 	self.parts.main.Active = true
 	self.parts.edge.Visible = self:getstyle().chrome.showedge
 	self:setmini(false, 3)
-	self:innerresize(true)
+	self:setinnerresize(true)
 	local st = self:getstyle()
 	for _, name in ipairs({"close", "minimize", "maximize"}) do
 		local b = self.parts[name]
@@ -1938,7 +1945,7 @@ function dock.start()
 	ic.CornerRadius = UDim.new(0, 10)
 	ic.Parent = ind
 	ind.Parent = hint
-	hint.indicator = ind
+	hintind = ind
 	watch(ind, "BackgroundColor3", "colors.hint")
 
 	local lt = Instance.new("TextButton")
@@ -1960,8 +1967,8 @@ function dock.start()
 	rt.Position = UDim2.new(1, -16, 0, -36)
 	rt.Parent = sides
 
-	sides.ltoggle = lt
-	sides.rtoggle = rt
+	ltoggle = lt
+	rtoggle = rt
 
 	bteffects(lt, {mode = 2, startrole = "colors.btn", hoverrole = "colors.btnover", pressrole = "colors.btndown"})
 	bteffects(rt, {mode = 2, startrole = "colors.btn", hoverrole = "colors.btnover", pressrole = "colors.btndown"})
@@ -2021,18 +2028,19 @@ function dock.new(title, x, y)
 
 	local st = obj:getstyle()
 
+	local bevels = {}
 	if st.shape.bevel then
 		for _, name in ipairs({"close", "minimize", "maximize"}) do
 			local b = obj.parts[name]
 			if b then
-				b.bevel = bevel(b, st)
+				bevels[b] = bevel(b, st)
 			end
 		end
 	end
 
-	bteffects(obj.parts.close, {mode = 1, presssound = "click", bevel = obj.parts.close.bevel})
-	bteffects(obj.parts.minimize, {mode = 1, presssound = "click", bevel = obj.parts.minimize.bevel})
-	bteffects(obj.parts.maximize, {mode = 1, presssound = "click", bevel = obj.parts.maximize.bevel})
+	bteffects(obj.parts.close, {mode = 1, presssound = "click", bevel = bevels[obj.parts.close]})
+	bteffects(obj.parts.minimize, {mode = 1, presssound = "click", bevel = bevels[obj.parts.minimize]})
+	bteffects(obj.parts.maximize, {mode = 1, presssound = "click", bevel = bevels[obj.parts.maximize]})
 
 	local top = obj.parts.top
 	local main = obj.parts.main
@@ -2097,8 +2105,8 @@ function dock.new(title, x, y)
 							if cx < 25 then
 								if hasroom(left, obj.miny or 100) then
 									local ip, range = insertspot(left, cy)
-									hint.indicator.Position = UDim2.new(0, 0, 0, range[1])
-									hint.indicator.Size = UDim2.new(0, left.w, 0, range[2] - range[1])
+									hintind.Position = UDim2.new(0, 0, 0, range[1])
+									hintind.Size = UDim2.new(0, left.w, 0, range[2] - range[1])
 									hint.Parent = holder
 									inspos = ip
 									insside = "left"
@@ -2107,8 +2115,8 @@ function dock.new(title, x, y)
 							elseif cx >= mx - 25 then
 								if hasroom(right, obj.miny or 100) then
 									local ip, range = insertspot(right, cy)
-									hint.indicator.Position = UDim2.new(0, mx - right.w, 0, range[1])
-									hint.indicator.Size = UDim2.new(0, right.w, 0, range[2] - range[1])
+									hintind.Position = UDim2.new(0, mx - right.w, 0, range[1])
+									hintind.Size = UDim2.new(0, right.w, 0, range[2] - range[1])
 									hint.Parent = holder
 									inspos = ip
 									insside = "right"
